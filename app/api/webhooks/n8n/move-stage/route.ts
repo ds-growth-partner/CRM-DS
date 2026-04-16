@@ -1,0 +1,39 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getAuthContext } from '@/lib/supabase/auth-context'
+import { N8nWebhookClient } from '@/lib/n8n/client'
+
+export async function POST(request: NextRequest) {
+  const ctx = await getAuthContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await request.json()
+  const payload = {
+    ...body,
+    tenant_id: ctx.tenantId,
+    moved_by: ctx.userId,
+    timestamp: new Date().toISOString(),
+  }
+
+  const admin = createAdminClient()
+  const { data: creds } = await admin
+    .from('tenant_credentials')
+    .select('n8n_base_url, n8n_webhook_secret')
+    .eq('tenant_id', ctx.tenantId)
+    .single()
+
+  if (!creds?.n8n_base_url) {
+    // Dev: update directly in Supabase
+    const { contact_id, new_stage_id } = body
+    await admin
+      .from('contacts')
+      .update({ funnel_stage_id: new_stage_id })
+      .eq('id', contact_id)
+    return NextResponse.json({ ok: true, dev: true })
+  }
+
+  const client = new N8nWebhookClient(creds.n8n_base_url, creds.n8n_webhook_secret ?? '')
+  const res = await client.post('move-stage', payload)
+  const data = await res.json().catch(() => ({}))
+  return NextResponse.json(data, { status: res.status })
+}

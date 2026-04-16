@@ -128,3 +128,34 @@
     @apply font-sans;
   }
 }
+
+/* WhatsApp-style chat bubbles */
+.msg-bubble-in {
+  border-radius: 0 18px 18px 18px;
+}
+
+.msg-bubble-out {
+  border-radius: 18px 18px 0 18px;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(0.5 0 0 / 0.3);
+  border-radius: 2px;
+}
+
+/* Animations */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
