@@ -76,7 +76,7 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
     const channel = supabase
       .channel(`conversations-realtime-${Date.now()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => loadConversations())
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => loadConversations())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'n8n_chat_histories' }, () => loadConversations())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'contact_tags' }, () => loadConversations())
       .subscribe()
 

@@ -170,37 +170,7 @@ export type Database = {
         Insert: Omit<Database['public']['Tables']['n8n_chat_histories']['Row'], 'id'>
         Update: Partial<Database['public']['Tables']['n8n_chat_histories']['Insert']>
       }
-      messages: {
-        Row: {
-          id: string
-          tenant_id: string
-          conversation_id: string
-          contact_id: string
-          content: string | null
-          content_type: 'text' | 'image' | 'audio' | 'video' | 'document' | 'sticker' | 'location' | 'contacts' | 'template' | 'reaction'
-          direction: 'inbound' | 'outbound'
-          sender_type: 'contact' | 'agent' | 'bot' | 'system'
-          sender_id: string | null
-          media_url: string | null
-          media_mime_type: string | null
-          media_filename: string | null
-          media_size_bytes: number | null
-          latitude: number | null
-          longitude: number | null
-          location_name: string | null
-          template_name: string | null
-          template_params: Json | null
-          reaction_emoji: string | null
-          reacted_to_message_id: string | null
-          wa_message_id: string | null
-          delivery_status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
-          error_message: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: Omit<Database['public']['Tables']['messages']['Row'], 'id' | 'created_at' | 'updated_at'>
-        Update: Partial<Database['public']['Tables']['messages']['Insert']>
-      }
+
       ai_actions: {
         Row: {
           id: string
@@ -423,7 +393,6 @@ export type Tag = Tables<'tags'>
 export type Contact = Tables<'contacts'>
 export type ContactTag = Tables<'contact_tags'>
 export type Conversation = Tables<'conversations'>
-export type Message = Tables<'messages'>
 export type AIAction = Tables<'ai_actions'>
 export type Appointment = Tables<'appointments'>
 export type HSMTemplate = Tables<'hsm_templates'>
@@ -453,6 +422,3 @@ export type ConversationWithContact = Conversation & {
   assigned_agent?: User | null
 }
 
-export type MessageWithSender = Message & {
-  sender?: User | null
-}

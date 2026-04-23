@@ -16,10 +16,10 @@ import type { ContactForConversation } from '@/lib/types/database'
 interface ComposerProps {
   conversationId: string
   contactId: string
-  waId: string
+  waId: string | null
   lastIncomingAt: string | null
   contact?: ContactForConversation | null
-  onOptimisticMessage?: (content: string) => string
+  onOptimisticMessage?: (content: string) => void
   onMessageSent?: () => void
 }
 
@@ -165,69 +165,78 @@ export function Composer({
     setAttachments([])
 
     try {
-      const { data: convData } = await supabase
-        .from('conversations').select('tenant_id').eq('id', conversationId).single()
-      if (!convData) throw new Error('Conversación no encontrada')
-
       const now = new Date().toISOString()
 
-      // Subir archivos adjuntos primero
+      // File attachments → n8n_chat_histories + manual conversation update
       if (hasFiles) {
         setUploading(true)
         for (const { file } of attachments) {
           const mediaUrl = await uploadFile(file)
           if (!mediaUrl) continue
-          const contentType = getContentType(file)
-          await supabase.from('messages').insert({
-            tenant_id: convData.tenant_id,
-            conversation_id: conversationId,
-            contact_id: contactId,
-            content: file.name,
-            content_type: contentType,
-            direction: 'outbound',
-            sender_type: 'agent',
-            media_url: mediaUrl,
-            media_mime_type: file.type,
-            media_filename: file.name,
-            media_size_bytes: file.size,
-            delivery_status: 'sent',
-            created_at: now,
-          })
+
+          if (waId) {
+            // Store file message in n8n format
+            await supabase.from('n8n_chat_histories').insert({
+              session_id: `${waId}@s.whatsapp.net`,
+              message: {
+                type: 'ai',
+                content: `[${getContentType(file)}] ${file.name}\n${mediaUrl}`,
+                tool_calls: [],
+                additional_kwargs: {},
+                response_metadata: {},
+              },
+              time_stamp: now,
+            })
+          }
         }
         setUploading(false)
-      }
 
-      // Mensaje de texto
-      if (hasText) {
-        const { error } = await supabase.from('messages').insert({
-          tenant_id: convData.tenant_id,
-          conversation_id: conversationId,
-          contact_id: contactId,
-          content: resolved,
-          content_type: 'text',
-          direction: 'outbound',
-          sender_type: 'agent',
-          delivery_status: 'sent',
-          created_at: now,
-        })
-        if (error) throw error
-      }
-
-      // Actualizar conversación y contacto
-      const lastContent = resolved || (attachments[0]?.file.name ?? '[archivo]')
-      await Promise.all([
-        supabase.from('conversations').update({
-          last_message_preview: lastContent,
+        await supabase.from('conversations').update({
+          last_message_preview: attachments[0]?.file.name ?? '[archivo]',
           last_message_at: now,
           last_message_direction: 'outbound',
           unread_count: 0,
           updated_at: now,
-        }).eq('id', conversationId),
-        supabase.from('contacts').update({
-          last_contacted_at: now,
+        }).eq('id', conversationId)
+      }
+
+      // Text message
+      if (hasText) {
+        // Always update conversation metadata first
+        const { data: convData } = await supabase
+          .from('conversations').select('tenant_id').eq('id', conversationId).single()
+        if (!convData) throw new Error('Conversación no encontrada')
+
+        await supabase.from('conversations').update({
+          last_message_preview: resolved.slice(0, 100),
+          last_message_at: now,
+          last_message_direction: 'outbound',
+          unread_count: 0,
           updated_at: now,
-        }).eq('id', contactId),
-      ])
+        }).eq('id', conversationId)
+
+        // Write to n8n_chat_histories if contact has a WhatsApp ID
+        if (waId) {
+          const { error } = await supabase.from('n8n_chat_histories').insert({
+            session_id: `${waId}@s.whatsapp.net`,
+            message: {
+              type: 'ai',
+              content: resolved,
+              tool_calls: [],
+              additional_kwargs: {},
+              response_metadata: {},
+            },
+            time_stamp: now,
+          })
+          if (error) throw error
+        }
+      }
+
+      // Always update contact's last_contacted_at
+      await supabase.from('contacts').update({
+        last_contacted_at: now,
+        updated_at: now,
+      }).eq('id', contactId)
 
       onMessageSent?.()
     } catch {

@@ -1,10 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRealtimeMessages } from '@/hooks/use-realtime-messages'
 import { useN8nMessages } from '@/hooks/use-n8n-messages'
 import { useRealtimeContact } from '@/hooks/use-realtime-contact'
-import { MessageBubble } from './message-bubble'
 import { N8nMessageBubble } from './n8n-message-bubble'
 import { Composer } from './composer'
 import { WindowIndicator } from './window-indicator'
@@ -29,15 +27,9 @@ interface ChatViewProps {
 export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps) {
   const contact = conversation.contact
   const waId = contact.wa_id ?? null
-  // n8n_chat_histories is the primary source (full AI conversation including bot responses)
-  const { messages: n8nMessages, loading: n8nLoading } = useN8nMessages(waId)
-  // CRM messages table as fallback (contacts without wa_id or human-only messages)
-  const { messages: crmMessages, loading: crmLoading, addOptimisticMessage } = useRealtimeMessages(conversation.id)
+  // n8n_chat_histories is the single source of truth for messages
+  const { messages: n8nMessages, loading, addOptimisticMessage: addN8nOptimistic } = useN8nMessages(waId)
   const { contact: liveContact } = useRealtimeContact(contact.id)
-
-  // Use n8n messages when contact has a wa_id, otherwise fall back to CRM messages
-  const useN8n = Boolean(waId)
-  const loading = useN8n ? n8nLoading : crmLoading
   const bottomRef = useRef<HTMLDivElement>(null)
   const [aiActive, setAiActive] = useState(conversation.ai_active)
   const [showAgentMenu, setShowAgentMenu] = useState(false)
@@ -53,7 +45,7 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [n8nMessages.length, crmMessages.length])
+  }, [n8nMessages.length])
 
   async function loadAgents() {
     if (!tenant) return
@@ -93,18 +85,7 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
     }
   }
 
-  // Group CRM messages by date (fallback)
-  const crmGrouped: { date: string; messages: typeof crmMessages }[] = []
-  let crmCurrentDate = ''
-  for (const msg of crmMessages) {
-    const d = formatDate(msg.created_at)
-    if (d !== crmCurrentDate) {
-      crmCurrentDate = d
-      crmGrouped.push({ date: d, messages: [msg] })
-    } else {
-      crmGrouped[crmGrouped.length - 1].messages.push(msg)
-    }
-  }
+
 
   const fullName = `${contact.first_name} ${contact.last_name ?? ''}`.trim()
 
@@ -226,15 +207,15 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
               </div>
             ))}
           </div>
-        ) : useN8n ? (
-          /* ── n8n conversation history (primary source) ── */
+        ) : (
+          /* ── n8n conversation history ── */
           <>
             {n8nGrouped.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full pt-16 text-center px-8">
                 <Bot className="h-10 w-10 text-muted-foreground/30 mb-3" />
                 <p className="text-sm text-muted-foreground">Sin mensajes aún</p>
                 <p className="text-xs text-muted-foreground/60 mt-1">
-                  Los mensajes de WhatsApp aparecerán aquí
+                  {waId ? 'Los mensajes de WhatsApp aparecerán aquí' : 'Este contacto no tiene WhatsApp vinculado'}
                 </p>
               </div>
             )}
@@ -252,35 +233,16 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
             ))}
             <div ref={bottomRef} />
           </>
-        ) : (
-          /* ── CRM messages fallback (contacts without wa_id) ── */
-          <>
-            {crmGrouped.map(({ date, messages: dayMsgs }) => (
-              <div key={date}>
-                <div className="flex items-center justify-center my-4">
-                  <span className="text-[10px] text-muted-foreground bg-muted/70 border border-border/50 px-3 py-0.5 rounded-full backdrop-blur-sm">
-                    {date}
-                  </span>
-                </div>
-                {dayMsgs.map(msg => <MessageBubble key={msg.id} message={msg} />)}
-              </div>
-            ))}
-            <div ref={bottomRef} />
-          </>
         )}
       </ScrollArea>
 
       <Composer
         conversationId={conversation.id}
         contactId={contact.id}
-        waId={contact.wa_id ?? contact.phone?.replace(/\D/g, '') ?? ''}
+        waId={contact.wa_id ?? null}
         lastIncomingAt={contact.last_incoming_at}
         contact={liveContact ?? contact}
-        onOptimisticMessage={(content) => addOptimisticMessage({
-          content,
-          conversation_id: conversation.id,
-          contact_id: contact.id,
-        })}
+        onOptimisticMessage={(content) => addN8nOptimistic(content)}
       />
     </div>
   )

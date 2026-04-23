@@ -157,47 +157,7 @@ export async function POST(request: NextRequest) {
     conversation = newConv
   }
 
-  // 3. Insert message (deduplicate by wa_message_id if provided)
-  if (message.wa_message_id) {
-    const { data: existing } = await admin
-      .from('messages')
-      .select('id')
-      .eq('wa_message_id', message.wa_message_id)
-      .single()
-
-    if (existing) {
-      return NextResponse.json({ ok: true, duplicate: true, message_id: existing.id })
-    }
-  }
-
-  const { data: insertedMessage, error: msgError } = await admin
-    .from('messages')
-    .insert({
-      tenant_id,
-      conversation_id: conversation.id,
-      contact_id: contact.id,
-      content: message.content ?? null,
-      content_type: (message.content_type as 'text' | 'image' | 'audio' | 'video' | 'document' | 'sticker' | 'location' | 'template') ?? 'text',
-      direction: message.direction,
-      sender_type: message.sender_type,
-      media_url: message.media_url ?? null,
-      media_mime_type: message.media_mime_type ?? null,
-      media_filename: message.media_filename ?? null,
-      media_size_bytes: message.media_size_bytes ?? null,
-      template_name: message.template_name ?? null,
-      wa_message_id: message.wa_message_id ?? null,
-      delivery_status: message.direction === 'inbound' ? 'delivered' : 'sent',
-      created_at: now,
-    })
-    .select('id')
-    .single()
-
-  if (msgError) {
-    console.error('[inbound-message] Error inserting message:', msgError)
-    return NextResponse.json({ error: 'Failed to insert message' }, { status: 500 })
-  }
-
-  // 4. Update conversation metadata
+  // 3. Update conversation metadata
   const unreadIncrement = message.direction === 'inbound' ? (conversation.unread_count ?? 0) + 1 : 0
   await admin
     .from('conversations')
@@ -213,7 +173,7 @@ export async function POST(request: NextRequest) {
     })
     .eq('id', conversation.id)
 
-  // 5. Update contact last_incoming_at if inbound
+  // 4. Update contact last_incoming_at if inbound
   if (message.direction === 'inbound') {
     await admin
       .from('contacts')
@@ -227,7 +187,6 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    message_id: insertedMessage?.id,
     conversation_id: conversation.id,
     contact_id: contact.id,
   })
