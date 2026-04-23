@@ -17,6 +17,7 @@ import {
   ChevronRight,
   LogOut,
   Zap,
+  X,
 } from 'lucide-react'
 import { useSupabase } from '@/providers/supabase-provider'
 import { useRouter } from 'next/navigation'
@@ -35,7 +36,7 @@ const BOTTOM_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname()
-  const { sidebarCollapsed, toggleSidebar } = useUIStore()
+  const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useUIStore()
   const { user, tenant } = useAuth()
   const { supabase } = useSupabase()
   const router = useRouter()
@@ -94,7 +95,11 @@ export function Sidebar() {
     <aside
       className={cn(
         'relative flex flex-col border-r border-border transition-all duration-300 bg-sidebar',
-        sidebarCollapsed ? 'w-[68px]' : 'w-[220px]'
+        // Desktop: collapsible
+        sidebarCollapsed ? 'w-[68px]' : 'w-[220px]',
+        // Mobile: fixed overlay, oculto por defecto
+        'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[220px]',
+        !mobileSidebarOpen && 'max-md:hidden',
       )}
     >
       {/* Top accent line */}
@@ -127,11 +132,19 @@ export function Sidebar() {
             TC
           </div>
         )}
+        {/* Mobile close button */}
+        <button
+          onClick={() => setMobileSidebarOpen(false)}
+          className="md:hidden flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0 cursor-pointer"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+        {/* Desktop collapse button */}
         <button
           onClick={toggleSidebar}
           className={cn(
-            'flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0 cursor-pointer',
-            sidebarCollapsed && 'hidden'
+            'hidden md:flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0 cursor-pointer',
+            sidebarCollapsed && 'md:hidden'
           )}
         >
           <ChevronLeft className="h-3.5 w-3.5" />

@@ -55,7 +55,7 @@ export function ConversationList({
   })
 
   return (
-    <div className="flex flex-col h-full border-r border-border w-[300px] shrink-0 bg-sidebar">
+    <div className="flex flex-col h-full border-r border-border w-full md:w-[300px] shrink-0 bg-sidebar">
       {/* Header */}
       <div className="px-3 pt-3 pb-2 border-b border-border space-y-2">
         <div className="flex items-center justify-between px-0.5">

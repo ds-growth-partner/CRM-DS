@@ -14,7 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import type { ConversationWithContact, User } from '@/lib/types/database'
 import { formatDate } from '@/lib/utils/date'
-import { Bot, User as UserIcon, UserCheck, ChevronDown } from 'lucide-react'
+import { Bot, User as UserIcon, UserCheck, ChevronDown, ArrowLeft, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSupabase } from '@/providers/supabase-provider'
 import { useAuth } from '@/providers/auth-provider'
@@ -22,9 +22,11 @@ import { toast } from 'sonner'
 
 interface ChatViewProps {
   conversation: ConversationWithContact
+  onBack?: () => void        // Mobile: volver a la lista
+  onShowContact?: () => void // Mobile/tablet: mostrar panel de contacto
 }
 
-export function ChatView({ conversation }: ChatViewProps) {
+export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps) {
   const contact = conversation.contact
   const waId = contact.wa_id ?? null
   // n8n_chat_histories is the primary source (full AI conversation including bot responses)
@@ -111,6 +113,15 @@ export function ChatView({ conversation }: ChatViewProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-background/80 backdrop-blur-md gap-3 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
+          {/* Mobile back button */}
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="md:hidden flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          )}
           {/* Avatar */}
           <div className="relative shrink-0">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-primary text-sm font-semibold ring-1 ring-primary/25">
@@ -192,6 +203,16 @@ export function ChatView({ conversation }: ChatViewProps) {
             aiActive={aiActive}
             onToggle={setAiActive}
           />
+
+          {/* Mobile/tablet: mostrar panel de contacto */}
+          {onShowContact && (
+            <button
+              onClick={onShowContact}
+              className="lg:hidden flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+            >
+              <Info className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
 
