@@ -164,6 +164,8 @@ export function Composer({
     setText('')
     setAttachments([])
 
+    const n8nSessionId = waId ? (/^\d+$/.test(waId) ? `${waId}@s.whatsapp.net` : waId) : null
+
     try {
       const now = new Date().toISOString()
 
@@ -174,15 +176,15 @@ export function Composer({
           const mediaUrl = await uploadFile(file)
           if (!mediaUrl) continue
 
-          if (waId) {
+          if (n8nSessionId) {
             // Store file message in n8n format
             await supabase.from('n8n_chat_histories').insert({
-              session_id: `${waId}@s.whatsapp.net`,
+              session_id: n8nSessionId,
               message: {
                 type: 'ai',
                 content: `[${getContentType(file)}] ${file.name}\n${mediaUrl}`,
                 tool_calls: [],
-                additional_kwargs: {},
+                additional_kwargs: { sender: 'agent' },
                 response_metadata: {},
               },
               time_stamp: now,
@@ -215,15 +217,15 @@ export function Composer({
           updated_at: now,
         }).eq('id', conversationId)
 
-        // Write to n8n_chat_histories if contact has a WhatsApp ID
-        if (waId) {
+        // Write to n8n_chat_histories if contact has a valid session ID
+        if (n8nSessionId) {
           const { error } = await supabase.from('n8n_chat_histories').insert({
-            session_id: `${waId}@s.whatsapp.net`,
+            session_id: n8nSessionId,
             message: {
               type: 'ai',
               content: resolved,
               tool_calls: [],
-              additional_kwargs: {},
+              additional_kwargs: { sender: 'agent' },
               response_metadata: {},
             },
             time_stamp: now,

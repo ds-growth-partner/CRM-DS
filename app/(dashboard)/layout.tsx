@@ -12,7 +12,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         <Topbar />
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 relative overflow-hidden flex flex-col">
           {children}
         </main>
       </div>

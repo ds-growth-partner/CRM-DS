@@ -22,8 +22,8 @@ export function useN8nMessages(waId: string | null | undefined) {
   const prevSessionIdRef = useRef<string | null>(null)
   const initializedRef = useRef(false)
 
-  // n8n session_id is "<waId>@s.whatsapp.net"
-  const sessionId = waId ? `${waId}@s.whatsapp.net` : null
+  // n8n session_id is "<waId>@s.whatsapp.net" for WhatsApp, but could be a hash for webchat.
+  const sessionId = waId ? (/^\d+$/.test(waId) ? `${waId}@s.whatsapp.net` : waId) : null
 
   const loadInitial = useCallback(async (sid: string | null) => {
     if (!sid) {
@@ -134,7 +134,7 @@ export function useN8nMessages(waId: string | null | undefined) {
         id: -Date.now(),
         session_id: sessionId,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        message: { type: 'ai', content } as any,
+        message: { type: 'ai', content, additional_kwargs: { sender: 'agent' } } as any,
         time_stamp: new Date().toISOString(),
       } as N8nChatHistory,
     ])
