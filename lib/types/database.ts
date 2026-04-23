@@ -1,5 +1,25 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
+// n8n Postgres Chat Memory message format
+export type N8nMessage = {
+  type: 'human' | 'ai' | 'tool'
+  content: string
+  // AI messages with tool calls
+  tool_calls?: Array<{
+    id: string
+    name: string
+    args: Record<string, unknown>
+    type: 'tool_call'
+  }>
+  invalid_tool_calls?: unknown[]
+  // Tool result messages
+  name?: string
+  // Alternative format used by follow-up/proactive messages
+  data?: { content: string }
+  additional_kwargs?: Record<string, unknown>
+  response_metadata?: Record<string, unknown>
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -139,6 +159,16 @@ export type Database = {
         }
         Insert: Omit<Database['public']['Tables']['conversations']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['conversations']['Insert']>
+      }
+      n8n_chat_histories: {
+        Row: {
+          id: number
+          session_id: string
+          message: N8nMessage
+          time_stamp: string
+        }
+        Insert: Omit<Database['public']['Tables']['n8n_chat_histories']['Row'], 'id'>
+        Update: Partial<Database['public']['Tables']['n8n_chat_histories']['Insert']>
       }
       messages: {
         Row: {
@@ -343,6 +373,36 @@ export type Database = {
         Insert: Omit<Database['public']['Tables']['contact_notes']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['contact_notes']['Insert']>
       }
+      canned_responses: {
+        Row: {
+          id: string
+          tenant_id: string
+          title: string
+          shortcut: string
+          content: string
+          category: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['canned_responses']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['canned_responses']['Insert']>
+      }
+      custom_field_definitions: {
+        Row: {
+          id: string
+          tenant_id: string
+          field_key: string
+          label: string
+          field_type: 'text' | 'number' | 'date' | 'boolean' | 'select' | 'url' | 'email' | 'phone'
+          options: Json | null
+          is_required: boolean
+          position: number
+          created_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['custom_field_definitions']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['public']['Tables']['custom_field_definitions']['Insert']>
+      }
     }
     Functions: {
       get_user_tenant_id: { Args: Record<never, never>; Returns: string }
@@ -372,6 +432,9 @@ export type PhaseTransition = Tables<'phase_transitions'>
 export type ActivityLog = Tables<'activity_log'>
 export type DailyMetrics = Tables<'daily_metrics'>
 export type ContactNote = Tables<'contact_notes'>
+export type CannedResponse = Tables<'canned_responses'>
+export type CustomFieldDefinition = Tables<'custom_field_definitions'>
+export type N8nChatHistory = Tables<'n8n_chat_histories'>
 
 // Extended types with joins
 export type ContactWithDetails = Contact & {
@@ -380,8 +443,13 @@ export type ContactWithDetails = Contact & {
   assigned_user?: User | null
 }
 
+export type ContactForConversation = Contact & {
+  funnel_stage?: FunnelStage | null
+  tags?: Tag[]
+}
+
 export type ConversationWithContact = Conversation & {
-  contact: Contact
+  contact: ContactForConversation
   assigned_agent?: User | null
 }
 

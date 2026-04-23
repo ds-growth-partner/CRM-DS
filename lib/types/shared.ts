@@ -14,6 +14,8 @@ export type ConversationFilters = {
   status?: 'open' | 'resolved' | 'pending' | 'snoozed'
   ai_active?: boolean
   assigned_to?: string
+  tag_id?: string
+  funnel_stage_id?: string
   search?: string
 }
 

@@ -8,11 +8,11 @@ interface MessageBubbleProps {
 }
 
 const STATUS_ICONS = {
-  pending: <Clock className="h-3 w-3" />,
-  sent: <Check className="h-3 w-3" />,
-  delivered: <CheckCheck className="h-3 w-3" />,
-  read: <CheckCheck className="h-3 w-3 text-blue-400" />,
-  failed: <span className="text-red-400 text-xs">!</span>,
+  pending:   <Clock     className="h-3 w-3 opacity-60" />,
+  sent:      <Check     className="h-3 w-3 opacity-60" />,
+  delivered: <CheckCheck className="h-3 w-3 opacity-60" />,
+  read:      <CheckCheck className="h-3 w-3 text-primary" />,
+  failed:    <span className="text-destructive text-xs font-bold">!</span>,
 }
 
 export function MessageBubble({ message }: MessageBubbleProps) {
@@ -20,89 +20,118 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const isBot = message.sender_type === 'bot'
 
   return (
-    <div className={cn('flex mb-1.5 px-4', isOutbound ? 'justify-end' : 'justify-start')}>
+    <div className={cn('flex mb-2 px-4', isOutbound ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'relative max-w-[75%] px-3 py-2 shadow-sm',
+          'relative max-w-[72%] px-3.5 py-2.5 text-sm shadow-sm',
           isOutbound
-            ? 'msg-bubble-out bg-emerald-600/20 dark:bg-emerald-500/20'
-            : 'msg-bubble-in bg-card border border-border/50'
+            ? 'bubble-out-premium text-white'
+            : 'bubble-in-premium text-foreground'
         )}
       >
         {/* Bot label */}
-        {isBot && (
-          <p className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 mb-1">IA Bot</p>
+        {isBot && !isOutbound && (
+          <p className="text-[10px] font-semibold text-emerald-400 mb-1 uppercase tracking-wide">IA Bot</p>
         )}
 
-        {/* Content */}
+        {/* Text */}
         {message.content_type === 'text' && (
-          <p className="text-sm text-foreground whitespace-pre-wrap break-words">{message.content}</p>
+          <p className="whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>
         )}
 
+        {/* Image */}
         {message.content_type === 'image' && (
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {message.media_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={message.media_url}
                 alt="Imagen"
-                className="rounded-lg max-w-[200px] cursor-pointer hover:opacity-90 transition-opacity"
+                className="rounded-xl max-w-[220px] cursor-pointer hover:opacity-90 transition-opacity"
                 loading="lazy"
               />
             ) : (
-              <div className="flex items-center gap-2 text-muted-foreground">
+              <div className="flex items-center gap-2 opacity-60">
                 <ImageIcon className="h-4 w-4" />
-                <span className="text-sm">Imagen</span>
+                <span>Imagen</span>
               </div>
             )}
-            {message.content && <p className="text-sm text-foreground">{message.content}</p>}
+            {message.content && <p className="leading-relaxed">{message.content}</p>}
           </div>
         )}
 
+        {/* Audio */}
         {message.content_type === 'audio' && (
           <div className="flex items-center gap-2">
-            <Mic className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div className={cn(
+              'flex h-7 w-7 items-center justify-center rounded-full shrink-0',
+              isOutbound ? 'bg-white/20' : 'bg-primary/20'
+            )}>
+              <Mic className="h-3.5 w-3.5" />
+            </div>
             {message.media_url ? (
-              <audio controls className="h-8 max-w-[200px]" src={message.media_url} />
+              <audio controls className="h-7 max-w-[180px]" src={message.media_url} />
             ) : (
-              <span className="text-sm text-muted-foreground">Nota de voz</span>
+              <span className="opacity-60">Nota de voz</span>
             )}
           </div>
         )}
 
+        {/* Document */}
         {message.content_type === 'document' && (
           <a
             href={message.media_url ?? '#'}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 text-sm text-primary hover:underline"
+            className={cn(
+              'flex items-center gap-2 rounded-lg p-2 transition-colors',
+              isOutbound ? 'bg-white/10 hover:bg-white/20' : 'bg-primary/10 hover:bg-primary/20'
+            )}
           >
-            <FileText className="h-4 w-4 shrink-0" />
-            <span className="truncate">{message.media_filename ?? 'Documento'}</span>
+            <div className={cn(
+              'flex h-8 w-8 items-center justify-center rounded-lg shrink-0',
+              isOutbound ? 'bg-white/20' : 'bg-primary/20'
+            )}>
+              <FileText className="h-4 w-4" />
+            </div>
+            <span className="truncate text-xs font-medium">{message.media_filename ?? 'Documento'}</span>
           </a>
         )}
 
+        {/* Location */}
         {message.content_type === 'location' && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <MapPin className="h-4 w-4 shrink-0 text-red-500" />
+          <div className="flex items-center gap-2">
+            <MapPin className="h-4 w-4 shrink-0 text-red-400" />
             <span>{message.location_name ?? `${message.latitude}, ${message.longitude}`}</span>
           </div>
         )}
 
+        {/* Template */}
         {message.content_type === 'template' && (
           <div className="space-y-1">
-            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Plantilla HSM</p>
-            <p className="text-sm text-foreground">{message.content ?? message.template_name}</p>
+            <p className={cn(
+              'text-[10px] font-semibold uppercase tracking-wide',
+              isOutbound ? 'text-white/60' : 'text-foreground/50'
+            )}>
+              Plantilla HSM
+            </p>
+            <p className="leading-relaxed">{message.content ?? message.template_name}</p>
           </div>
         )}
 
         {/* Timestamp + status */}
-        <div className={cn('flex items-center gap-1 mt-0.5', isOutbound ? 'justify-end' : 'justify-start')}>
-          <span className="text-[10px] text-muted-foreground">
+        <div className={cn(
+          'flex items-center gap-1 mt-1',
+          isOutbound ? 'justify-end' : 'justify-start'
+        )}>
+          <span className={cn(
+            'text-[10px] tabular-nums',
+            isOutbound ? 'text-white/55' : 'text-foreground/50'
+          )}>
             {formatTime(message.created_at)}
           </span>
           {isOutbound && (
-            <span className="text-muted-foreground">
+            <span className="text-white/60">
               {STATUS_ICONS[message.delivery_status ?? 'pending']}
             </span>
           )}

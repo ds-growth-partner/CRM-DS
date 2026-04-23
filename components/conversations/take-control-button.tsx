@@ -10,7 +10,6 @@ interface TakeControlButtonProps {
   conversationId: string
   contactId: string
   aiActive: boolean
-  chatwootConversationId?: number | null
   onToggle?: (newAiActive: boolean) => void
 }
 
@@ -18,7 +17,6 @@ export function TakeControlButton({
   conversationId,
   contactId,
   aiActive,
-  chatwootConversationId,
   onToggle,
 }: TakeControlButtonProps) {
   const { supabase } = useSupabase()
@@ -30,7 +28,6 @@ export function TakeControlButton({
     const newAiActive = !localAiActive
 
     try {
-      // Update conversation ai_active directly in Supabase
       const { error: convError } = await supabase
         .from('conversations')
         .update({ ai_active: newAiActive, updated_at: new Date().toISOString() })
@@ -38,7 +35,6 @@ export function TakeControlButton({
 
       if (convError) throw convError
 
-      // Also update the contact's ai_active flag
       const { error: contactError } = await supabase
         .from('contacts')
         .update({ ai_active: newAiActive, updated_at: new Date().toISOString() })
@@ -46,7 +42,6 @@ export function TakeControlButton({
 
       if (contactError) throw contactError
 
-      // Log the intervention in AI actions for transparency
       const { data: convData } = await supabase
         .from('conversations')
         .select('tenant_id')
@@ -62,8 +57,8 @@ export function TakeControlButton({
             contact_id: contactId,
             action_type: newAiActive ? 'release_control' : 'take_control',
             summary: newAiActive ? 'Control devuelto a la IA' : 'Agente humano tomó control',
-            reasoning: newAiActive 
-              ? 'El agente consideró que la IA puede continuar la conversación.' 
+            reasoning: newAiActive
+              ? 'El agente consideró que la IA puede continuar la conversación.'
               : 'El agente intervino para manejar la solicitud manualmente.',
             status: 'success'
           })
@@ -81,26 +76,25 @@ export function TakeControlButton({
 
   return (
     <Button
-      variant={localAiActive ? 'outline' : 'default'}
+      variant={localAiActive ? 'outline' : 'secondary'}
       size="sm"
       onClick={handleToggle}
       disabled={loading}
-      className="gap-2"
+      className="gap-1.5 h-7 text-xs border-border/60 hover:border-primary/40 bg-transparent cursor-pointer"
     >
       {loading ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
       ) : localAiActive ? (
         <>
-          <User className="h-4 w-4" />
+          <User className="h-3.5 w-3.5" />
           Tomar Control
         </>
       ) : (
         <>
-          <Bot className="h-4 w-4" />
+          <Bot className="h-3.5 w-3.5" />
           Devolver a IA
         </>
       )}
     </Button>
   )
 }
-

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSupabase } from '@/providers/supabase-provider'
 import type { ContactWithDetails } from '@/lib/types/database'
 import type { ContactFilters } from '@/lib/types/shared'
@@ -10,6 +10,7 @@ export function useContacts(filters: ContactFilters = {}) {
   const [contacts, setContacts] = useState<ContactWithDetails[]>([])
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
 
   const loadContacts = useCallback(async () => {
     setLoading(true)
@@ -37,7 +38,7 @@ export function useContacts(filters: ContactFilters = {}) {
     }
 
     const { data, count, error } = await query.limit(500)
-    
+
     if (error) {
       console.error('Error fetching contacts:', error)
     }
@@ -50,10 +51,36 @@ export function useContacts(filters: ContactFilters = {}) {
     setContacts(mapped as unknown as ContactWithDetails[])
     setTotal(count ?? 0)
     setLoading(false)
-  }, [supabase, JSON.stringify(filters)])
+  }, [supabase, JSON.stringify(filters)]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadContacts()
+
+    // Limpiar canal anterior
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current)
+    }
+
+    // Realtime: recarga la lista cuando cambia cualquier contacto o sus etiquetas
+    const channel = supabase
+      .channel(`contacts-list-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'contacts' },
+        () => loadContacts()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'contact_tags' },
+        () => loadContacts()
+      )
+      .subscribe()
+
+    channelRef.current = channel
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [loadContacts])
 
   return { contacts, loading, total, refetch: loadContacts }

@@ -54,15 +54,17 @@ export default function ContactsPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Topbar */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
-        <h1 className="text-lg font-semibold text-foreground">Contactos</h1>
-        <span className="text-sm text-muted-foreground">({total})</span>
+      <div className="flex items-center gap-3 px-6 py-3.5 border-b border-border bg-background/80 backdrop-blur-md">
+        <div>
+          <h1 className="text-base font-semibold text-foreground leading-tight">Contactos</h1>
+          <p className="text-[11px] text-muted-foreground">{total} contacto{total !== 1 ? 's' : ''}</p>
+        </div>
 
         <div className="relative ml-4 flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
-            placeholder="Buscar contacto..."
-            className="pl-9 h-9"
+            placeholder="Buscar por nombre, teléfono, email..."
+            className="pl-9 h-8 text-sm bg-muted/40 border-transparent focus:border-primary/40 transition-colors"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -74,31 +76,31 @@ export default function ContactsPage() {
             <Button
               variant={view === 'table' ? 'secondary' : 'ghost'}
               size="sm"
-              className="rounded-none h-8 px-3"
+              className="rounded-none h-8 px-2.5 cursor-pointer"
               onClick={() => setView('table')}
             >
-              <Table2 className="h-4 w-4" />
+              <Table2 className="h-3.5 w-3.5" />
             </Button>
             <Button
               variant={view === 'kanban' ? 'secondary' : 'ghost'}
               size="sm"
-              className="rounded-none h-8 px-3"
+              className="rounded-none h-8 px-2.5 cursor-pointer"
               onClick={() => setView('kanban')}
             >
-              <LayoutGrid className="h-4 w-4" />
+              <LayoutGrid className="h-3.5 w-3.5" />
             </Button>
           </div>
 
-          <Button variant="outline" size="sm" onClick={handleExportCSV}>
-            <Download className="h-4 w-4 mr-1.5" />
+          <Button variant="outline" size="sm" className="h-8 text-xs cursor-pointer" onClick={handleExportCSV}>
+            <Download className="h-3.5 w-3.5 mr-1.5" />
             Exportar
           </Button>
-          <Button variant="outline" size="sm" disabled title="Próximamente">
-            <Upload className="h-4 w-4 mr-1.5" />
+          <Button variant="outline" size="sm" className="h-8 text-xs" disabled title="Próximamente">
+            <Upload className="h-3.5 w-3.5 mr-1.5" />
             Importar
           </Button>
-          <Button size="sm" disabled title="Próximamente">
-            <Plus className="h-4 w-4 mr-1.5" />
+          <Button size="sm" className="h-8 text-xs" disabled title="Próximamente">
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
             Nuevo contacto
           </Button>
         </div>
@@ -107,8 +109,8 @@ export default function ContactsPage() {
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         {loading ? (
-          <div className="p-6 space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
+          <div className="p-6 space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-11 w-full rounded-xl" />)}
           </div>
         ) : view === 'table' ? (
           <div className="overflow-auto h-full">

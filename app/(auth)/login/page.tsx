@@ -5,9 +5,8 @@ import { useSupabase } from '@/providers/supabase-provider'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
-import { Loader2, Mail } from 'lucide-react'
+import { Loader2, Mail, Sparkles } from 'lucide-react'
 
 export default function LoginPage() {
   const { supabase } = useSupabase()
@@ -38,57 +37,73 @@ export default function LoginPage() {
 
   if (sent) {
     return (
-      <Card>
-        <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center mb-2">
-            <Mail className="w-6 h-6 text-green-600 dark:text-green-400" />
-          </div>
-          <CardTitle>Revisa tu correo</CardTitle>
-          <CardDescription>
-            Enviamos un enlace de acceso a <strong>{email}</strong>. Haz clic en él para iniciar sesión.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button variant="outline" className="w-full" onClick={() => setSent(false)}>
-            Usar otro correo
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="p-8 text-center space-y-4">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/15 ring-1 ring-emerald-500/25">
+          <Mail className="w-6 h-6 text-emerald-400" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Revisa tu correo</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Enviamos un enlace de acceso a{' '}
+            <span className="text-foreground font-medium">{email}</span>.
+            Haz clic en él para iniciar sesión.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          className="w-full border-border/60 hover:border-primary/40 bg-transparent cursor-pointer"
+          onClick={() => setSent(false)}
+        >
+          Usar otro correo
+        </Button>
+      </div>
     )
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Iniciar sesión</CardTitle>
-        <CardDescription>
+    <div className="p-8 space-y-6">
+      <div>
+        <div className="flex items-center gap-1.5 mb-1">
+          <h2 className="text-lg font-semibold text-foreground">Iniciar sesión</h2>
+          <Sparkles className="h-4 w-4 text-primary" />
+        </div>
+        <p className="text-sm text-muted-foreground">
           Ingresa tu correo y te enviaremos un enlace de acceso seguro.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleMagicLink} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Correo electrónico</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="tu@empresa.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-              autoFocus
-            />
-          </div>
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Mail className="w-4 h-4 mr-2" />
-            )}
-            Enviar enlace de acceso
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+        </p>
+      </div>
+
+      <form onSubmit={handleMagicLink} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="email" className="text-sm font-medium">
+            Correo electrónico
+          </Label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="tu@empresa.com"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            required
+            autoFocus
+            className="h-10 bg-muted/40 border-border/60 focus:border-primary/50 transition-colors"
+          />
+        </div>
+        <Button
+          type="submit"
+          className="w-full h-10 font-semibold cursor-pointer"
+          style={{
+            background: loading ? undefined : 'linear-gradient(135deg, oklch(0.62 0.24 264), oklch(0.58 0.24 285))',
+          }}
+          disabled={loading}
+        >
+          {loading ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <Mail className="w-4 h-4 mr-2" />
+          )}
+          Enviar enlace de acceso
+        </Button>
+      </form>
+    </div>
   )
 }

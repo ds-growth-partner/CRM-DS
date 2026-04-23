@@ -14,9 +14,6 @@ type Creds = {
   waba_id: string
   phone_number_id: string
   meta_access_token: string
-  chatwoot_base_url: string
-  chatwoot_api_token: string
-  chatwoot_account_id: string
   n8n_base_url: string
   n8n_webhook_secret: string
   google_calendar_id: string
@@ -29,7 +26,6 @@ export default function IntegrationsPage() {
   const [showTokens, setShowTokens] = useState(false)
   const [creds, setCreds] = useState<Creds>({
     waba_id: '', phone_number_id: '', meta_access_token: '',
-    chatwoot_base_url: '', chatwoot_api_token: '', chatwoot_account_id: '',
     n8n_base_url: '', n8n_webhook_secret: '', google_calendar_id: 'primary',
   })
 
@@ -42,9 +38,6 @@ export default function IntegrationsPage() {
             waba_id: data.waba_id ?? '',
             phone_number_id: data.phone_number_id ?? '',
             meta_access_token: data.meta_access_token ?? '',
-            chatwoot_base_url: data.chatwoot_base_url ?? '',
-            chatwoot_api_token: data.chatwoot_api_token ?? '',
-            chatwoot_account_id: String(data.chatwoot_account_id ?? ''),
             n8n_base_url: data.n8n_base_url ?? '',
             n8n_webhook_secret: data.n8n_webhook_secret ?? '',
             google_calendar_id: data.google_calendar_id ?? 'primary',
@@ -66,9 +59,6 @@ export default function IntegrationsPage() {
         waba_id: creds.waba_id || null,
         phone_number_id: creds.phone_number_id || null,
         meta_access_token: creds.meta_access_token || null,
-        chatwoot_base_url: creds.chatwoot_base_url || null,
-        chatwoot_api_token: creds.chatwoot_api_token || null,
-        chatwoot_account_id: creds.chatwoot_account_id ? parseInt(creds.chatwoot_account_id) : null,
         n8n_base_url: creds.n8n_base_url || null,
         n8n_webhook_secret: creds.n8n_webhook_secret || null,
         google_calendar_id: creds.google_calendar_id || null,
@@ -127,18 +117,6 @@ export default function IntegrationsPage() {
             <Field label="WABA ID" field="waba_id" placeholder="123456789" />
             <Field label="Phone Number ID" field="phone_number_id" placeholder="987654321" />
             <Field label="System User Token" field="meta_access_token" placeholder="EAAx..." type="secret" />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Chatwoot</CardTitle>
-            <CardDescription>Instancia de Chatwoot para gestión de conversaciones</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Field label="URL de Chatwoot" field="chatwoot_base_url" placeholder="https://app.chatwoot.com" />
-            <Field label="API Access Token" field="chatwoot_api_token" placeholder="tu-token-api" type="secret" />
-            <Field label="Account ID" field="chatwoot_account_id" placeholder="1" type="number" />
           </CardContent>
         </Card>
 

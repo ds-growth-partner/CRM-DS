@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/ui-store'
 import { useAuth } from '@/providers/auth-provider'
-import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   MessageSquare,
@@ -16,18 +15,18 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Bot,
   LogOut,
+  Zap,
 } from 'lucide-react'
 import { useSupabase } from '@/providers/supabase-provider'
 import { useRouter } from 'next/navigation'
 
 const NAV_ITEMS = [
   { href: '/conversations', label: 'Conversaciones', icon: MessageSquare },
-  { href: '/contacts', label: 'Contactos', icon: Users },
-  { href: '/calendar', label: 'Calendario', icon: Calendar },
-  { href: '/templates', label: 'Plantillas', icon: FileText },
-  { href: '/reports', label: 'Reportes', icon: BarChart3 },
+  { href: '/contacts',      label: 'Contactos',      icon: Users },
+  { href: '/calendar',      label: 'Calendario',     icon: Calendar },
+  { href: '/templates',     label: 'Plantillas',     icon: FileText },
+  { href: '/reports',       label: 'Reportes',       icon: BarChart3 },
 ]
 
 const BOTTOM_ITEMS = [
@@ -52,15 +51,20 @@ export function Sidebar() {
     if (sidebarCollapsed) {
       return (
         <Tooltip>
-          <TooltipTrigger className={cn(
-            'flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
-            isActive
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-          )}>
-            <Icon className="h-5 w-5" />
+          <TooltipTrigger render={
+            <Link
+              href={href}
+              className={cn(
+                'flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200 cursor-pointer',
+                isActive
+                  ? 'nav-active-bar text-primary shadow-sm'
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+              )}
+            />
+          }>
+            <Icon className="h-4 w-4" />
           </TooltipTrigger>
-          <TooltipContent side="right">{label}</TooltipContent>
+          <TooltipContent side="right" className="font-medium">{label}</TooltipContent>
         </Tooltip>
       )
     }
@@ -69,106 +73,148 @@ export function Sidebar() {
       <Link
         href={href}
         className={cn(
-          'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+          'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 cursor-pointer',
           isActive
-            ? 'bg-primary text-primary-foreground'
-            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            ? 'nav-active-bar text-primary'
+            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground hover:translate-x-0.5'
         )}
       >
-        <Icon className="h-5 w-5 shrink-0" />
-        {label}
+        <Icon className="h-4 w-4 shrink-0" />
+        <span className="truncate flex-1">{label}</span>
+        {isActive && (
+          <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0 opacity-80" />
+        )}
       </Link>
     )
   }
 
+  const userInitial = user?.full_name?.charAt(0)?.toUpperCase() ?? 'U'
+
   return (
     <aside
       className={cn(
-        'flex flex-col border-r border-border bg-sidebar transition-all duration-300',
-        sidebarCollapsed ? 'w-16' : 'w-64'
+        'relative flex flex-col border-r border-border transition-all duration-300 bg-sidebar',
+        sidebarCollapsed ? 'w-[68px]' : 'w-[220px]'
       )}
     >
+      {/* Top accent line */}
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+
       {/* Logo */}
       <div className={cn(
-        'flex h-16 items-center border-b border-border px-4',
+        'flex h-14 items-center border-b border-border px-3 gap-2',
         sidebarCollapsed ? 'justify-center' : 'justify-between'
       )}>
         {!sidebarCollapsed && (
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white glow-sm"
+              style={{ background: 'linear-gradient(135deg, oklch(0.62 0.24 264), oklch(0.58 0.24 293))' }}
+            >
               TC
             </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">TuContador</p>
-              <p className="text-xs text-muted-foreground truncate max-w-[120px]">{tenant?.name ?? 'CRM'}</p>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-foreground leading-tight">TuContador</p>
+              <p className="text-[10px] text-muted-foreground truncate">{tenant?.name ?? 'CRM'}</p>
             </div>
           </div>
         )}
         {sidebarCollapsed && (
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">
+          <div
+            className="flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold text-white glow-sm"
+            style={{ background: 'linear-gradient(135deg, oklch(0.62 0.24 264), oklch(0.58 0.24 293))' }}
+          >
             TC
           </div>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0"
+        <button
           onClick={toggleSidebar}
+          className={cn(
+            'flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0 cursor-pointer',
+            sidebarCollapsed && 'hidden'
+          )}
         >
-          {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-        </Button>
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+        {sidebarCollapsed && (
+          <button
+            onClick={toggleSidebar}
+            className="absolute left-[68px] top-4 flex h-5 w-5 items-center justify-center rounded-full bg-card border border-border text-muted-foreground hover:text-foreground shadow-sm z-10 transition-colors cursor-pointer"
+          >
+            <ChevronRight className="h-3 w-3" />
+          </button>
+        )}
       </div>
 
       {/* AI Badge */}
       {!sidebarCollapsed && (
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400">
-            <Bot className="h-3.5 w-3.5" />
-            <span>IA Activa</span>
-            <span className="ml-auto h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+        <div className="px-3 pt-3 pb-1">
+          <div className="flex items-center gap-2 rounded-xl bg-emerald-500/8 border border-emerald-500/15 px-2.5 py-1.5 text-xs text-emerald-400">
+            <Zap className="h-3 w-3 shrink-0" />
+            <span className="font-semibold">IA Activa</span>
+            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
           </div>
+        </div>
+      )}
+      {sidebarCollapsed && (
+        <div className="flex justify-center pt-3 pb-1">
+          <Tooltip>
+            <TooltipTrigger render={
+              <div
+                className="flex h-8 w-8 items-center justify-center rounded-xl text-emerald-400 bg-emerald-500/8 border border-emerald-500/15 cursor-default"
+              />
+            }>
+              <Zap className="h-3.5 w-3.5" />
+            </TooltipTrigger>
+            <TooltipContent side="right">IA Activa</TooltipContent>
+          </Tooltip>
         </div>
       )}
 
       {/* Navigation */}
       <nav className={cn(
-        'flex-1 space-y-1 py-4',
-        sidebarCollapsed ? 'px-3' : 'px-3'
+        'flex-1 space-y-0.5 py-3',
+        sidebarCollapsed ? 'px-2 flex flex-col items-center' : 'px-2'
       )}>
         {NAV_ITEMS.map(item => (
           <NavItem key={item.href} {...item} />
         ))}
       </nav>
 
+      {/* Divider */}
+      <div className="mx-3 h-px bg-border" />
+
       {/* Bottom items */}
       <div className={cn(
-        'border-t border-border py-4 space-y-1',
-        sidebarCollapsed ? 'px-3' : 'px-3'
+        'py-3 space-y-0.5',
+        sidebarCollapsed ? 'px-2 flex flex-col items-center' : 'px-2'
       )}>
         {BOTTOM_ITEMS.map(item => (
           <NavItem key={item.href} {...item} />
         ))}
 
-        {/* User info */}
+        {/* User row */}
         <div className={cn(
-          'mt-3 flex items-center gap-3 rounded-lg px-3 py-2',
+          'mt-2 flex items-center gap-2.5 rounded-xl px-2.5 py-2 transition-colors hover:bg-accent',
           sidebarCollapsed ? 'justify-center' : ''
         )}>
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-medium">
-            {user?.full_name?.charAt(0)?.toUpperCase() ?? 'U'}
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary text-xs font-semibold ring-1 ring-primary/25">
+            {userInitial}
           </div>
           {!sidebarCollapsed && (
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium text-foreground truncate">{user?.full_name}</p>
-              <p className="text-xs text-muted-foreground truncate">{user?.role}</p>
+              <p className="text-xs font-semibold text-foreground truncate leading-tight">{user?.full_name}</p>
+              <p className="text-[10px] text-muted-foreground truncate capitalize">{user?.role}</p>
             </div>
           )}
           <Tooltip>
-            <TooltipTrigger
-              className="h-7 w-7 shrink-0 text-muted-foreground inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:pointer-events-none"
-              onClick={handleLogout}
-            >
-              <LogOut className="h-4 w-4" />
+            <TooltipTrigger render={
+              <button
+                onClick={handleLogout}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+              />
+            }>
+              <LogOut className="h-3.5 w-3.5" />
             </TooltipTrigger>
             <TooltipContent side="right">Cerrar sesión</TooltipContent>
           </Tooltip>

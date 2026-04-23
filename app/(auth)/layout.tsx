@@ -1,17 +1,42 @@
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative overflow-hidden">
+      {/* Glow orb — top left */}
+      <div
+        className="pointer-events-none absolute -top-64 -left-64 h-[500px] w-[500px] rounded-full opacity-20"
+        style={{
+          background: 'radial-gradient(circle, oklch(0.62 0.24 264) 0%, transparent 70%)',
+          filter: 'blur(60px)',
+        }}
+      />
+      {/* Glow orb — bottom right */}
+      <div
+        className="pointer-events-none absolute -bottom-64 -right-64 h-[500px] w-[500px] rounded-full opacity-15"
+        style={{
+          background: 'radial-gradient(circle, oklch(0.62 0.24 293) 0%, transparent 70%)',
+          filter: 'blur(80px)',
+        }}
+      />
+
+      <div className="w-full max-w-md relative z-10">
+        {/* Logo + brand */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-primary-foreground text-xl font-bold mb-4">
+          <div
+            className="inline-flex items-center justify-center w-14 h-14 rounded-2xl text-white text-xl font-bold mb-5 glow-primary"
+            style={{ background: 'linear-gradient(135deg, oklch(0.62 0.24 264), oklch(0.58 0.24 285))' }}
+          >
             TC
           </div>
-          <h1 className="text-2xl font-bold text-foreground">TuContador CRM</h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <h1 className="text-2xl font-bold gradient-text">TuContador CRM</h1>
+          <p className="text-muted-foreground text-sm mt-1.5">
             Plataforma inteligente de gestión de clientes
           </p>
         </div>
-        {children}
+
+        {/* Card — usa variables del tema, funciona en dark y light */}
+        <div className="glass-card">
+          {children}
+        </div>
       </div>
     </div>
   )

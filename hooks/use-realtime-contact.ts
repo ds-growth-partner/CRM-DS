@@ -54,6 +54,17 @@ export function useRealtimeContact(contactId: string | null) {
         },
         () => loadContact(contactId)
       )
+      // Escuchar cambios en etiquetas del contacto (asignación / remoción)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'contact_tags',
+          filter: `contact_id=eq.${contactId}`,
+        },
+        () => loadContact(contactId)
+      )
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }

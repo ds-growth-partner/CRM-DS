@@ -24,10 +24,12 @@ export async function POST(request: NextRequest) {
 
   if (!creds?.n8n_base_url) {
     // Dev: update directly in Supabase
-    const { contact_id, new_stage_id } = body
+    // El trigger log_phase_transition en Postgres registra automáticamente
+    // el cambio en phase_transitions al actualizar funnel_stage_id.
+    const { contact_id, new_stage_id } = body as Record<string, string>
     await admin
       .from('contacts')
-      .update({ funnel_stage_id: new_stage_id })
+      .update({ funnel_stage_id: new_stage_id, updated_at: new Date().toISOString() })
       .eq('id', contact_id)
     return NextResponse.json({ ok: true, dev: true })
   }

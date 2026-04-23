@@ -39,10 +39,6 @@ CREATE TABLE tenant_credentials (
     phone_number_id TEXT,                          -- Phone Number ID de Meta
     meta_access_token TEXT,                        -- System User Token (encriptar con Vault)
     meta_webhook_verify_token TEXT,                -- Token de verificación webhook
-    -- Chatwoot
-    chatwoot_base_url TEXT,                        -- URL de la instancia Chatwoot
-    chatwoot_api_token TEXT,                       -- API access token Chatwoot
-    chatwoot_account_id INTEGER,                   -- Account ID en Chatwoot
     -- n8n
     n8n_base_url TEXT,                             -- URL de la instancia n8n
     n8n_webhook_secret TEXT,                       -- HMAC secret para firmar webhooks
@@ -73,7 +69,6 @@ CREATE TABLE users (
     role TEXT NOT NULL DEFAULT 'agent'
         CHECK (role IN ('owner', 'admin', 'agent', 'viewer')),
     is_active BOOLEAN NOT NULL DEFAULT true,
-    chatwoot_agent_id INTEGER,                     -- ID del agente en Chatwoot
     last_seen_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -133,9 +128,7 @@ CREATE TABLE contacts (
     city TEXT,
     country TEXT DEFAULT 'CO',
     -- Referencias externas
-    chatwoot_contact_id INTEGER,                   -- ID en Chatwoot
-    chatwoot_conversation_id INTEGER,              -- Conversation ID en Chatwoot
-    wa_id TEXT,                                    -- WhatsApp ID (phone sin +)
+    wa_id TEXT,                                    -- WhatsApp ID (phone sin +, ej: 573001234567)
     -- Estado del embudo
     funnel_stage_id UUID REFERENCES funnel_stages(id) ON DELETE SET NULL,
     lead_score INTEGER NOT NULL DEFAULT 0
@@ -167,7 +160,6 @@ CREATE INDEX idx_contacts_score ON contacts(tenant_id, lead_score DESC);
 CREATE INDEX idx_contacts_source ON contacts(tenant_id, source);
 CREATE INDEX idx_contacts_ai_active ON contacts(tenant_id, ai_active);
 CREATE INDEX idx_contacts_wa_id ON contacts(tenant_id, wa_id);
-CREATE INDEX idx_contacts_chatwoot ON contacts(chatwoot_contact_id);
 CREATE INDEX idx_contacts_updated ON contacts(updated_at DESC);
 
 -- ================================================================
@@ -183,14 +175,12 @@ CREATE TABLE contact_tags (
 CREATE INDEX idx_contact_tags_tag ON contact_tags(tag_id);
 
 -- ================================================================
--- 8. CONVERSATIONS (Metadatos de conversación, espejo de Chatwoot)
--- Estado y metadata que necesitamos más allá de lo que Chatwoot da
+-- 8. CONVERSATIONS (Metadatos de conversación WhatsApp por contacto)
 -- ================================================================
 CREATE TABLE conversations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     contact_id UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-    chatwoot_conversation_id INTEGER,              -- ID en Chatwoot
     -- Estado
     status TEXT NOT NULL DEFAULT 'open'
         CHECK (status IN ('open', 'resolved', 'pending', 'snoozed')),
@@ -217,15 +207,14 @@ CREATE INDEX idx_conversations_last_msg ON conversations(tenant_id, last_message
 CREATE INDEX idx_conversations_unread ON conversations(tenant_id, unread_count DESC);
 CREATE INDEX idx_conversations_assigned ON conversations(tenant_id, assigned_agent_id);
 CREATE INDEX idx_conversations_ai ON conversations(tenant_id, ai_active);
-CREATE INDEX idx_conversations_chatwoot ON conversations(chatwoot_conversation_id);
 
 -- ================================================================
--- 9. MESSAGES (Copia local de mensajes para búsqueda rápida y
---    para alimentar la memoria del agente IA)
+-- 9. MESSAGES (Mensajes CRM — agentes humanos y trazabilidad WhatsApp)
+-- La memoria de la IA vive en n8n_chat_histories (tabla 10b).
 -- ================================================================
 CREATE TABLE messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
     conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     contact_id UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
     -- Contenido
@@ -256,7 +245,6 @@ CREATE TABLE messages (
     reacted_to_message_id UUID,                    -- A qué mensaje reacciona
     -- Referencias externas
     wa_message_id TEXT,                            -- wamid de Meta
-    chatwoot_message_id INTEGER,
     -- Estado de entrega
     delivery_status TEXT DEFAULT 'sent'
         CHECK (delivery_status IN ('pending', 'sent', 'delivered', 'read', 'failed')),
@@ -273,6 +261,28 @@ CREATE INDEX idx_messages_contact ON messages(contact_id, created_at);
 CREATE INDEX idx_messages_wa_id ON messages(wa_message_id);
 CREATE INDEX idx_messages_direction ON messages(conversation_id, direction);
 CREATE INDEX idx_messages_created ON messages(created_at DESC);
+
+-- ================================================================
+-- 9b. N8N_CHAT_HISTORIES (Memoria de conversación del agente IA)
+-- n8n Postgres Chat Memory node escribe aquí automáticamente.
+-- session_id = "<wa_id>@s.whatsapp.net"  (ej: "573001234567@s.whatsapp.net")
+-- message    = JSONB con formato LangChain: {type, content, tool_calls?, ...}
+-- ================================================================
+CREATE TABLE n8n_chat_histories (
+    id         BIGSERIAL   PRIMARY KEY,
+    session_id TEXT        NOT NULL,
+    message    JSONB       NOT NULL,
+    time_stamp TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_n8n_chat_session ON n8n_chat_histories(session_id);
+CREATE INDEX idx_n8n_chat_time    ON n8n_chat_histories(time_stamp DESC);
+
+-- Permisos: n8n escribe vía postgres directo, CRM UI lee vía anon/authenticated
+GRANT ALL    ON public.n8n_chat_histories TO service_role;
+GRANT SELECT, INSERT, UPDATE ON public.n8n_chat_histories TO anon;
+GRANT SELECT, INSERT, UPDATE ON public.n8n_chat_histories TO authenticated;
+GRANT USAGE, SELECT ON SEQUENCE public.n8n_chat_histories_id_seq TO anon, authenticated, service_role;
 
 -- ================================================================
 -- 10. AI_ACTIONS ("Mente de la IA" - log de acciones del agente)
@@ -554,11 +564,27 @@ CREATE INDEX idx_contact_notes_contact ON contact_notes(contact_id, created_at D
 -- ================================================================
 -- HABILITAR REALTIME EN TABLAS CLAVE
 -- ================================================================
+
+-- REPLICA IDENTITY FULL es necesario para que Supabase Realtime
+-- pueda enviar la fila completa en eventos UPDATE y DELETE,
+-- lo que permite que los filtros (ej: contact_id=eq.X) funcionen
+-- correctamente en el cliente.
+ALTER TABLE contacts REPLICA IDENTITY FULL;
+ALTER TABLE conversations REPLICA IDENTITY FULL;
+ALTER TABLE messages REPLICA IDENTITY FULL;
+ALTER TABLE n8n_chat_histories REPLICA IDENTITY FULL;
+ALTER TABLE ai_actions REPLICA IDENTITY FULL;
+ALTER TABLE appointments REPLICA IDENTITY FULL;
+ALTER TABLE contact_tags REPLICA IDENTITY FULL;
+ALTER TABLE phase_transitions REPLICA IDENTITY FULL;
+
 ALTER PUBLICATION supabase_realtime ADD TABLE contacts;
 ALTER PUBLICATION supabase_realtime ADD TABLE conversations;
 ALTER PUBLICATION supabase_realtime ADD TABLE messages;
+ALTER PUBLICATION supabase_realtime ADD TABLE n8n_chat_histories;
 ALTER PUBLICATION supabase_realtime ADD TABLE ai_actions;
 ALTER PUBLICATION supabase_realtime ADD TABLE appointments;
+ALTER PUBLICATION supabase_realtime ADD TABLE contact_tags;
 ALTER PUBLICATION supabase_realtime ADD TABLE phase_transitions;
 
 -- ================================================================
