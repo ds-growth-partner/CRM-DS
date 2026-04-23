@@ -109,7 +109,7 @@ export function ConversationList({
       )}
 
       {/* List */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         {loading ? (
           <div className="px-3 pt-2 space-y-2">
             {Array.from({ length: 6 }).map((_, i) => (

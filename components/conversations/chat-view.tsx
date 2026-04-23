@@ -198,7 +198,7 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 py-2 chat-bg">
+      <ScrollArea className="flex-1 min-h-0 py-2 chat-bg">
         {loading ? (
           <div className="px-4 space-y-3 pt-4">
             {Array.from({ length: 5 }).map((_, i) => (

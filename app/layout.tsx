@@ -26,7 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
       className={`${jakarta.variable} h-full`}
     >
-      <body className="h-full antialiased font-sans">
+      <body className="h-full overflow-hidden antialiased font-sans overscroll-none">
         <ThemeProvider>
           <SupabaseProvider>
             <AuthProvider>
