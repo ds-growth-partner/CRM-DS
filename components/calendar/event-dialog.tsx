@@ -32,7 +32,9 @@ export function EventDialog({ open, onClose, appointment, defaultStart, defaultE
     title: '',
     description: '',
     location: 'Google Meet',
+    start_date: '',
     start_time: '',
+    end_date: '',
     end_time: '',
     timezone: 'America/Bogota',
     create_google_meet: true,
@@ -41,12 +43,17 @@ export function EventDialog({ open, onClose, appointment, defaultStart, defaultE
 
   useEffect(() => {
     if (open) {
+      const startIso = appointment?.start_time ?? defaultStart ?? ''
+      const endIso = appointment?.end_time ?? defaultEnd ?? ''
+
       setForm({
         title: appointment?.title ?? '',
         description: appointment?.description ?? '',
         location: appointment?.location ?? 'Google Meet',
-        start_time: appointment?.start_time ?? defaultStart ?? '',
-        end_time: appointment?.end_time ?? defaultEnd ?? '',
+        start_date: startIso ? startIso.slice(0, 10) : '',
+        start_time: startIso ? startIso.slice(11, 16) : '',
+        end_date: endIso ? endIso.slice(0, 10) : '',
+        end_time: endIso ? endIso.slice(11, 16) : '',
         timezone: appointment?.timezone ?? 'America/Bogota',
         create_google_meet: true,
         contact_id: appointment?.contact_id ?? 'none',
@@ -90,7 +97,7 @@ export function EventDialog({ open, onClose, appointment, defaultStart, defaultE
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.title || !form.start_time || !form.end_time) {
+    if (!form.title || !form.start_date || !form.start_time || !form.end_date || !form.end_time) {
       toast.error('Completa los campos requeridos')
       return
     }
@@ -103,19 +110,28 @@ export function EventDialog({ open, onClose, appointment, defaultStart, defaultE
         body: JSON.stringify({
           action: appointment ? 'update' : 'create',
           appointment: {
-            ...form,
+            title: form.title,
+            description: form.description,
+            location: form.location,
+            timezone: form.timezone,
+            start_time: `${form.start_date}T${form.start_time}:00-05:00`,
+            end_time: `${form.end_date}T${form.end_time}:00-05:00`,
+            create_google_meet: form.create_google_meet,
             contact_id: form.contact_id === 'none' ? null : form.contact_id,
             id: appointment?.id,
           },
         }),
       })
 
-      if (!res.ok) throw new Error()
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Unknown error')
+      }
       toast.success(appointment ? 'Cita actualizada' : 'Cita creada exitosamente')
       onSaved?.()
       onClose()
-    } catch {
-      toast.error('Error al guardar la cita')
+    } catch (err: any) {
+      toast.error(err.message || 'Error al guardar la cita')
     } finally {
       setLoading(false)
     }
@@ -134,26 +150,40 @@ export function EventDialog({ open, onClose, appointment, defaultStart, defaultE
             <Input id="title" value={form.title} onChange={e => update('title', e.target.value)} required />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="start">Inicio *</Label>
-              <Input
-                id="start"
-                type="datetime-local"
-                value={form.start_time.slice(0, 16)}
-                onChange={e => update('start_time', e.target.value + ':00-05:00')}
-                required
-              />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Inicio *</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  type="date"
+                  value={form.start_date}
+                  onChange={e => update('start_date', e.target.value)}
+                  required
+                />
+                <Input
+                  type="time"
+                  value={form.start_time}
+                  onChange={e => update('start_time', e.target.value)}
+                  required
+                />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="end">Fin *</Label>
-              <Input
-                id="end"
-                type="datetime-local"
-                value={form.end_time.slice(0, 16)}
-                onChange={e => update('end_time', e.target.value + ':00-05:00')}
-                required
-              />
+            <div className="space-y-2">
+              <Label>Fin *</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  type="date"
+                  value={form.end_date}
+                  onChange={e => update('end_date', e.target.value)}
+                  required
+                />
+                <Input
+                  type="time"
+                  value={form.end_time}
+                  onChange={e => update('end_time', e.target.value)}
+                  required
+                />
+              </div>
             </div>
           </div>
 

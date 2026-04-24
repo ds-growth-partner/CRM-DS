@@ -17,13 +17,15 @@ export async function getAuthContext(): Promise<AuthContext | null> {
   const { data: { user } } = await supabase.auth.getUser()
 
   if (user) {
-    const { data } = await supabase
+    const admin = createAdminClient()
+    const { data } = await admin
       .from('users')
       .select('id, tenant_id, role')
       .eq('id', user.id)
       .single()
-    if (!data) return null
-    return { userId: data.id, tenantId: data.tenant_id, role: data.role }
+    if (data) {
+      return { userId: data.id, tenantId: data.tenant_id, role: data.role }
+    }
   }
 
   // Dev bypass: primer usuario disponible
