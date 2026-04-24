@@ -125,7 +125,7 @@ export function EventDialog({ open, onClose, appointment, defaultStart, defaultE
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || 'Unknown error')
+        throw new Error(data.error || 'Error al guardar la cita')
       }
       toast.success(appointment ? 'Cita actualizada' : 'Cita creada exitosamente')
       onSaved?.()
