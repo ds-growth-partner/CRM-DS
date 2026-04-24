@@ -39,6 +39,8 @@
     "papaparse": "^5.5.3",
     "react": "19.2.4",
     "react-big-calendar": "^1.19.4",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
     "shadcn": "^4.2.0",

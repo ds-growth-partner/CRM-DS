@@ -1,0 +1,86 @@
+/* Override react-big-calendar default styles to match the premium theme */
+
+.calendar-wrapper .rbc-calendar {
+  font-family: inherit;
+  color: hsl(var(--foreground));
+}
+
+.calendar-wrapper .rbc-header {
+  padding: 0.5rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.calendar-wrapper .rbc-month-view,
+.calendar-wrapper .rbc-time-view,
+.calendar-wrapper .rbc-agenda-view {
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+  background-color: hsl(var(--card) / 0.5);
+  overflow: hidden;
+}
+
+.calendar-wrapper .rbc-day-bg {
+  border-left: 1px solid hsl(var(--border) / 0.5);
+}
+
+.calendar-wrapper .rbc-month-row {
+  border-top: 1px solid hsl(var(--border) / 0.5);
+}
+
+.calendar-wrapper .rbc-time-header-content {
+  border-left: 1px solid hsl(var(--border) / 0.5);
+}
+
+.calendar-wrapper .rbc-time-content {
+  border-top: 1px solid hsl(var(--border) / 0.5);
+}
+
+.calendar-wrapper .rbc-timeslot-group {
+  border-bottom: 1px solid hsl(var(--border) / 0.5);
+}
+
+.calendar-wrapper .rbc-time-view .rbc-allday-cell {
+  background-color: hsl(var(--muted) / 0.3);
+}
+
+.calendar-wrapper .rbc-today {
+  background-color: hsl(var(--primary) / 0.05);
+}
+
+.calendar-wrapper .rbc-event {
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 0.75rem;
+  border: 1px solid transparent;
+  transition: opacity 0.2s;
+}
+
+.calendar-wrapper .rbc-event:focus {
+  outline: 2px solid hsl(var(--ring));
+}
+
+.calendar-wrapper .rbc-off-range-bg {
+  background-color: hsl(var(--muted) / 0.3);
+}
+
+.calendar-wrapper .rbc-current-time-indicator {
+  background-color: hsl(var(--primary));
+}
+
+.calendar-wrapper .rbc-btn-group button {
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+}
+
+.calendar-wrapper .rbc-btn-group button.rbc-active {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+  box-shadow: inset 0 3px 5px rgba(0,0,0,0.1);
+}
+
+.calendar-wrapper .rbc-btn-group button:hover {
+  background: hsl(var(--accent) / 0.8);
+}

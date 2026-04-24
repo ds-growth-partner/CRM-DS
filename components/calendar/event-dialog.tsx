@@ -1,38 +1,91 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
-import type { Appointment } from '@/lib/types/database'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import type { Appointment, Contact } from '@/lib/types/database'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Trash2 } from 'lucide-react'
+import { useSupabase } from '@/providers/supabase-provider'
 
 interface EventDialogProps {
   open: boolean
   onClose: () => void
   appointment?: Appointment | null
   defaultStart?: string
+  defaultEnd?: string
   onSaved?: () => void
 }
 
-export function EventDialog({ open, onClose, appointment, defaultStart, onSaved }: EventDialogProps) {
+export function EventDialog({ open, onClose, appointment, defaultStart, defaultEnd, onSaved }: EventDialogProps) {
+  const { supabase } = useSupabase()
   const [loading, setLoading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [contacts, setContacts] = useState<Partial<Contact>[]>([])
+  
   const [form, setForm] = useState({
-    title: appointment?.title ?? '',
-    description: appointment?.description ?? '',
-    location: appointment?.location ?? 'Google Meet',
-    start_time: appointment?.start_time ?? defaultStart ?? '',
-    end_time: appointment?.end_time ?? '',
-    timezone: appointment?.timezone ?? 'America/Bogota',
+    title: '',
+    description: '',
+    location: 'Google Meet',
+    start_time: '',
+    end_time: '',
+    timezone: 'America/Bogota',
     create_google_meet: true,
+    contact_id: 'none',
   })
 
-  function update(k: string, v: string | boolean) {
+  useEffect(() => {
+    if (open) {
+      setForm({
+        title: appointment?.title ?? '',
+        description: appointment?.description ?? '',
+        location: appointment?.location ?? 'Google Meet',
+        start_time: appointment?.start_time ?? defaultStart ?? '',
+        end_time: appointment?.end_time ?? defaultEnd ?? '',
+        timezone: appointment?.timezone ?? 'America/Bogota',
+        create_google_meet: true,
+        contact_id: appointment?.contact_id ?? 'none',
+      })
+      
+      // Load contacts for dropdown
+      supabase.from('contacts').select('id, first_name, last_name, company').order('first_name')
+        .then(({ data }) => setContacts(data ?? []))
+    }
+  }, [open, appointment, defaultStart, defaultEnd, supabase])
+
+  function update(k: string, v: string | boolean | null) {
     setForm(f => ({ ...f, [k]: v }))
+  }
+
+  async function handleDelete() {
+    if (!appointment) return
+    if (!confirm('¿Seguro que deseas eliminar esta cita?')) return
+
+    setDeleting(true)
+    try {
+      const res = await fetch('/api/calendar/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete',
+          appointment: { id: appointment.id },
+        }),
+      })
+
+      if (!res.ok) throw new Error()
+      toast.success('Cita eliminada')
+      onSaved?.()
+      onClose()
+    } catch {
+      toast.error('Error al eliminar')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -51,6 +104,7 @@ export function EventDialog({ open, onClose, appointment, defaultStart, onSaved 
           action: appointment ? 'update' : 'create',
           appointment: {
             ...form,
+            contact_id: form.contact_id === 'none' ? null : form.contact_id,
             id: appointment?.id,
           },
         }),
@@ -104,6 +158,23 @@ export function EventDialog({ open, onClose, appointment, defaultStart, onSaved 
           </div>
 
           <div className="space-y-1.5">
+            <Label htmlFor="contact">Contacto vinculado</Label>
+            <Select value={form.contact_id} onValueChange={v => update('contact_id', v)}>
+              <SelectTrigger id="contact">
+                <SelectValue placeholder="Seleccionar contacto" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Ninguno</SelectItem>
+                {contacts.map(c => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.first_name} {c.last_name} {c.company ? `(${c.company})` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
             <Label htmlFor="location">Ubicación</Label>
             <Input id="location" value={form.location} onChange={e => update('location', e.target.value)} />
           </div>
@@ -122,12 +193,21 @@ export function EventDialog({ open, onClose, appointment, defaultStart, onSaved 
             />
           </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" disabled={loading}>
-              {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {appointment ? 'Actualizar' : 'Crear cita'}
-            </Button>
+          <DialogFooter className="flex justify-between items-center sm:justify-between">
+            {appointment ? (
+              <Button type="button" variant="destructive" size="icon" onClick={handleDelete} disabled={deleting || loading} className="shrink-0">
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              </Button>
+            ) : (
+              <div /> // Spacer
+            )}
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={onClose} disabled={loading || deleting}>Cancelar</Button>
+              <Button type="submit" disabled={loading || deleting}>
+                {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {appointment ? 'Actualizar' : 'Crear cita'}
+              </Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>

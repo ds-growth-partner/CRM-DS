@@ -23,9 +23,32 @@ export async function POST(request: NextRequest) {
   }
 
   if (!creds?.n8n_base_url) {
-    // Dev: create appointment directly in Supabase
+    // Dev: create/update/delete appointment directly in Supabase
     const appt = body.appointment
-    const { data } = await admin.from('appointments').insert({
+    const action = body.action
+
+    if (action === 'delete') {
+      const { error } = await admin.from('appointments').delete().eq('id', appt.id)
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ ok: true, dev: true })
+    }
+
+    if (action === 'update') {
+      const { data, error } = await admin.from('appointments').update({
+        title: appt.title,
+        description: appt.description,
+        contact_id: appt.contact_id ?? null,
+        assigned_to: appt.assigned_to ?? ctx.userId,
+        start_time: appt.start_time,
+        end_time: appt.end_time,
+        timezone: appt.timezone ?? 'America/Bogota',
+        location: appt.location,
+      }).eq('id', appt.id).select().single()
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ ok: true, dev: true, data })
+    }
+
+    const { data, error } = await admin.from('appointments').insert({
       tenant_id: ctx.tenantId,
       title: appt.title,
       description: appt.description,
@@ -38,6 +61,7 @@ export async function POST(request: NextRequest) {
       created_by: 'manual',
       created_by_user_id: ctx.userId,
     }).select().single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     return NextResponse.json({ ok: true, dev: true, data })
   }
 
