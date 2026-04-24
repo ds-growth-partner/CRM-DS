@@ -6,37 +6,58 @@ import { KanbanCard } from './kanban-card'
 import { cn } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
+type ContactWithTags = ContactWithDetails & { tags?: { id: string; name: string; color: string }[] }
+
 interface KanbanColumnProps {
   stage: FunnelStage
-  contacts: (ContactWithDetails & { tags?: { id: string; name: string; color: string }[] })[]
+  contacts: ContactWithTags[]
+  /** The card currently being dragged (global) */
+  activeContact?: ContactWithTags | null
+  /** Whether the drag pointer is currently over this column */
+  isOver?: boolean
 }
 
-export function KanbanColumn({ stage, contacts }: KanbanColumnProps) {
-  const { setNodeRef, isOver } = useDroppable({ id: stage.id })
+export function KanbanColumn({ stage, contacts, activeContact, isOver }: KanbanColumnProps) {
+  const { setNodeRef } = useDroppable({ id: stage.id })
+
+  // Is the dragged card currently FROM this column?
+  const activeIsFromHere = activeContact && contacts.some(c => c.id === activeContact.id)
+  // Should we render a ghost at the bottom of this column?
+  const showGhost = isOver && activeContact && !activeIsFromHere
+
+  // Display count: include ghost, exclude the invisible placeholder
+  const displayCount = contacts.length + (showGhost ? 1 : 0)
 
   return (
     <div className="flex flex-col w-72 shrink-0">
-      {/* Header */}
+      {/* Column header */}
       <div
-        className="flex items-center justify-between px-3 py-2.5 rounded-t-lg"
-        style={{ backgroundColor: `${stage.color}15`, borderBottom: `2px solid ${stage.color}` }}
+        className="flex items-center justify-between px-3 py-2.5 rounded-t-xl transition-colors duration-200"
+        style={{
+          backgroundColor: isOver ? `${stage.color}22` : `${stage.color}14`,
+          borderBottom: `2px solid ${isOver ? stage.color : `${stage.color}80`}`,
+        }}
       >
         <div className="flex items-center gap-2">
           <span
-            className="h-2.5 w-2.5 rounded-full"
+            className={cn('h-2.5 w-2.5 rounded-full transition-transform duration-200', isOver && 'scale-110')}
             style={{ backgroundColor: stage.color }}
           />
           <span className="text-sm font-semibold text-foreground">{stage.name}</span>
         </div>
-        <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">{contacts.length}</span>
+        <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5 tabular-nums">
+          {displayCount}
+        </span>
       </div>
 
       {/* Drop zone */}
       <div
         ref={setNodeRef}
         className={cn(
-          'flex-1 min-h-[200px] rounded-b-lg border-x border-b border-border bg-muted/30 transition-colors',
-          isOver && 'bg-primary/5 border-primary/30'
+          'flex-1 min-h-[200px] rounded-b-xl border-x border-b transition-all duration-200',
+          isOver
+            ? 'bg-primary/[0.04] border-primary/20'
+            : 'bg-muted/30 border-border',
         )}
       >
         <ScrollArea className="h-full max-h-[calc(100vh-280px)]">
@@ -44,9 +65,21 @@ export function KanbanColumn({ stage, contacts }: KanbanColumnProps) {
             {contacts.map(contact => (
               <KanbanCard key={contact.id} contact={contact} />
             ))}
-            {contacts.length === 0 && (
-              <div className="text-center py-8 text-xs text-muted-foreground">
-                Sin contactos
+
+            {/* Ghost card: preview of the dragged card in this destination column */}
+            {showGhost && (
+              <KanbanCard contact={activeContact} isGhost />
+            )}
+
+            {/* Empty state */}
+            {contacts.length === 0 && !showGhost && (
+              <div
+                className={cn(
+                  'text-center py-10 text-xs transition-colors duration-200',
+                  isOver ? 'text-primary/70' : 'text-muted-foreground/50',
+                )}
+              >
+                {isOver ? 'Soltar aquí' : 'Sin contactos'}
               </div>
             )}
           </div>

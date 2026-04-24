@@ -1,44 +1,99 @@
 'use client'
 
-import { useState } from 'react'
-import { DndContext, DragEndEvent, DragOverlay, closestCenter } from '@dnd-kit/core'
+import { useState, useEffect, useRef } from 'react'
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverEvent,
+  DragOverlay,
+  DragStartEvent,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
 import type { ContactWithDetails, FunnelStage } from '@/lib/types/database'
 import { KanbanColumn } from './kanban-column'
 import { KanbanCard } from './kanban-card'
 import { toast } from 'sonner'
 
+type ContactWithTags = ContactWithDetails & { tags?: { id: string; name: string; color: string }[] }
+
 interface ContactsKanbanProps {
-  contacts: (ContactWithDetails & { tags?: { id: string; name: string; color: string }[] })[]
+  contacts: ContactWithTags[]
   stages: FunnelStage[]
   onStageChange?: (contactId: string, newStageId: string) => void
 }
 
+const NO_STAGE_ID = 'no-stage'
+
+const NO_STAGE: FunnelStage = {
+  id: NO_STAGE_ID,
+  name: 'Sin etapa',
+  color: '#94a3b8',
+  slug: '',
+  position: 999,
+  tenant_id: '',
+  is_won: false,
+  is_lost: false,
+  is_default: false,
+  created_at: '',
+}
+
 export function ContactsKanban({ contacts, stages, onStageChange }: ContactsKanbanProps) {
   const [localContacts, setLocalContacts] = useState(contacts)
-  const [dragging, setDragging] = useState<(typeof contacts)[0] | null>(null)
+  const [activeContact, setActiveContact] = useState<ContactWithTags | null>(null)
+  const [overColumnId, setOverColumnId] = useState<string | null>(null)
+  const isDraggingRef = useRef(false)
 
-  // Sync with parent
-  if (contacts !== localContacts && !dragging) {
-    setLocalContacts(contacts)
+  // Sync parent data → local state only when not dragging
+  useEffect(() => {
+    if (!isDraggingRef.current) {
+      setLocalContacts(contacts)
+    }
+  }, [contacts])
+
+  // Require 8px of movement before drag starts (prevents accidental drags on click)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  )
+
+  function handleDragStart(event: DragStartEvent) {
+    isDraggingRef.current = true
+    setActiveContact(localContacts.find(c => c.id === event.active.id) ?? null)
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    setOverColumnId((event.over?.id as string) ?? null)
   }
 
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
-    setDragging(null)
 
-    if (!over || active.id === over.id) return
+    isDraggingRef.current = false
+    setActiveContact(null)
+    setOverColumnId(null)
+
+    if (!over) return
 
     const contactId = active.id as string
     const newStageId = over.id as string
     const contact = localContacts.find(c => c.id === contactId)
-    if (!contact || contact.funnel_stage_id === newStageId) return
+    if (!contact) return
+
+    const currentColumnId = contact.funnel_stage_id ?? NO_STAGE_ID
+    if (currentColumnId === newStageId) return
 
     const prevStage = stages.find(s => s.id === contact.funnel_stage_id)
-    const newStage = stages.find(s => s.id === newStageId)
+    const newStage = newStageId === NO_STAGE_ID
+      ? NO_STAGE
+      : stages.find(s => s.id === newStageId)
 
-    // Optimistic update
+    const newFunnelStageId = newStageId === NO_STAGE_ID ? null : newStageId
+
+    // Optimistic update — instant UI
     setLocalContacts(prev =>
-      prev.map(c => c.id === contactId ? { ...c, funnel_stage_id: newStageId } : c)
+      prev.map(c => c.id === contactId ? { ...c, funnel_stage_id: newFunnelStageId } : c)
     )
 
     try {
@@ -48,7 +103,7 @@ export function ContactsKanban({ contacts, stages, onStageChange }: ContactsKanb
         body: JSON.stringify({
           contact_id: contactId,
           previous_stage_id: contact.funnel_stage_id,
-          new_stage_id: newStageId,
+          new_stage_id: newFunnelStageId,
           previous_stage_name: prevStage?.name,
           new_stage_name: newStage?.name,
           reason: 'manual',
@@ -57,9 +112,9 @@ export function ContactsKanban({ contacts, stages, onStageChange }: ContactsKanb
 
       if (!res.ok) throw new Error()
       onStageChange?.(contactId, newStageId)
-      toast.success(`Movido a ${newStage?.name}`)
+      toast.success(`Movido a ${newStage?.name ?? 'Sin etapa'}`)
     } catch {
-      // Rollback
+      // Rollback on error
       setLocalContacts(prev =>
         prev.map(c => c.id === contactId ? { ...c, funnel_stage_id: contact.funnel_stage_id } : c)
       )
@@ -68,29 +123,40 @@ export function ContactsKanban({ contacts, stages, onStageChange }: ContactsKanb
   }
 
   const sortedStages = [...stages].sort((a, b) => a.position - b.position)
+  const allColumns = [...sortedStages, NO_STAGE]
 
   return (
-    <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd} onDragStart={e => {
-      setDragging(localContacts.find(c => c.id === e.active.id) ?? null)
-    }}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+    >
       <div className="flex gap-4 overflow-x-auto pb-4 h-full">
-        {sortedStages.map(stage => (
-          <KanbanColumn
-            key={stage.id}
-            stage={stage}
-            contacts={localContacts.filter(c => c.funnel_stage_id === stage.id)}
-          />
-        ))}
-        {/* No stage column */}
-        <KanbanColumn
-          key="no-stage"
-          stage={{ id: 'no-stage', name: 'Sin etapa', color: '#94a3b8', slug: '', position: 999, tenant_id: '', is_won: false, is_lost: false, is_default: false, created_at: '' }}
-          contacts={localContacts.filter(c => !c.funnel_stage_id)}
-        />
+        {allColumns.map(stage => {
+          const columnContacts = localContacts.filter(c =>
+            stage.id === NO_STAGE_ID ? !c.funnel_stage_id : c.funnel_stage_id === stage.id
+          )
+          return (
+            <KanbanColumn
+              key={stage.id}
+              stage={stage}
+              contacts={columnContacts}
+              activeContact={activeContact}
+              isOver={overColumnId === stage.id}
+            />
+          )
+        })}
       </div>
 
-      <DragOverlay>
-        {dragging && <KanbanCard contact={dragging} />}
+      <DragOverlay
+        dropAnimation={{
+          duration: 180,
+          easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
+        }}
+      >
+        {activeContact ? <KanbanCard contact={activeContact} isOverlay /> : null}
       </DragOverlay>
     </DndContext>
   )

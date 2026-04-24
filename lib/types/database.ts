@@ -15,7 +15,7 @@ export type N8nMessage = {
   // Tool result messages
   name?: string
   // Alternative format used by follow-up/proactive messages
-  data?: { content: string }
+  data?: { content: string; additional_kwargs?: Record<string, unknown> }
   additional_kwargs?: Record<string, unknown>
   response_metadata?: Record<string, unknown>
 }
