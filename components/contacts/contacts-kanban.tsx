@@ -15,6 +15,7 @@ import {
 import type { ContactWithDetails, FunnelStage } from '@/lib/types/database'
 import { KanbanColumn } from './kanban-column'
 import { KanbanCard } from './kanban-card'
+import { toast } from 'sonner'
 import { useSupabase } from '@/providers/supabase-provider'
 
 type ContactWithTags = ContactWithDetails & { tags?: { id: string; name: string; color: string }[] }
