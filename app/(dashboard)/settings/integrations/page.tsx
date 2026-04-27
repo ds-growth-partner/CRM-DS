@@ -1,153 +1,75 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useAuth } from '@/providers/auth-provider'
-import { useSupabase } from '@/providers/supabase-provider'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { toast } from 'sonner'
-import { Loader2, Save, Eye, EyeOff } from 'lucide-react'
-
-type Creds = {
-  waba_id: string
-  phone_number_id: string
-  meta_access_token: string
-  n8n_base_url: string
-  n8n_webhook_secret: string
-  google_calendar_id: string
-}
+import { config } from '@/lib/config'
 
 export default function IntegrationsPage() {
-  const { tenant, user } = useAuth()
-  const { supabase } = useSupabase()
-  const [saving, setSaving] = useState(false)
-  const [showTokens, setShowTokens] = useState(false)
-  const [creds, setCreds] = useState<Creds>({
-    waba_id: '', phone_number_id: '', meta_access_token: '',
-    n8n_base_url: '', n8n_webhook_secret: '', google_calendar_id: 'primary',
-  })
+  const [envVars, setEnvVars] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    if (!tenant || !['owner'].includes(user?.role ?? '')) return
-    supabase.from('tenant_credentials').select('*').eq('tenant_id', tenant.id).single()
-      .then(({ data }) => {
-        if (data) {
-          setCreds({
-            waba_id: data.waba_id ?? '',
-            phone_number_id: data.phone_number_id ?? '',
-            meta_access_token: data.meta_access_token ?? '',
-            n8n_base_url: data.n8n_base_url ?? '',
-            n8n_webhook_secret: data.n8n_webhook_secret ?? '',
-            google_calendar_id: data.google_calendar_id ?? 'primary',
-          })
-        }
-      })
-  }, [tenant, user, supabase])
-
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault()
-    if (!tenant || user?.role !== 'owner') {
-      toast.error('Solo el owner puede modificar las integraciones')
-      return
-    }
-    setSaving(true)
-    try {
-      await supabase.from('tenant_credentials').upsert({
-        tenant_id: tenant.id,
-        waba_id: creds.waba_id || null,
-        phone_number_id: creds.phone_number_id || null,
-        meta_access_token: creds.meta_access_token || null,
-        n8n_base_url: creds.n8n_base_url || null,
-        n8n_webhook_secret: creds.n8n_webhook_secret || null,
-        google_calendar_id: creds.google_calendar_id || null,
-      }, { onConflict: 'tenant_id' })
-      toast.success('Integraciones guardadas')
-    } catch {
-      toast.error('Error al guardar')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const isOwner = user?.role === 'owner'
-
-  function Field({ label, field, placeholder, type = 'text' }: { label: string; field: keyof Creds; placeholder?: string; type?: string }) {
-    return (
-      <div className="space-y-1.5">
-        <Label>{label}</Label>
-        <Input
-          type={type === 'secret' ? (showTokens ? 'text' : 'password') : type}
-          value={creds[field]}
-          onChange={e => setCreds(c => ({ ...c, [field]: e.target.value }))}
-          placeholder={placeholder}
-          disabled={!isOwner}
-        />
-      </div>
-    )
-  }
+    setEnvVars({
+      'N8N_BASE_URL': config.n8n.baseUrl,
+      'N8N_WEBHOOK_SECRET': config.n8n.webhookSecret ? '••••••••' : 'no configurado',
+      'META_WABA_ID': config.meta.wabaId || 'no configurado',
+      'META_PHONE_NUMBER_ID': config.meta.phoneNumberId || 'no configurado',
+      'META_ACCESS_TOKEN': config.meta.accessToken ? '••••••••' : 'no configurado',
+      'GOOGLE_CALENDAR_ID': config.google.calendarId,
+      'GOOGLE_SERVICE_ACCOUNT_JSON': config.google.serviceAccountJson ? '••••••••' : 'no configurado',
+    })
+  }, [])
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Integraciones</h1>
-          <p className="text-sm text-muted-foreground">Conecta TuContador CRM con tus servicios externos</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => setShowTokens(v => !v)}>
-          {showTokens ? <EyeOff className="h-4 w-4 mr-1.5" /> : <Eye className="h-4 w-4 mr-1.5" />}
-          {showTokens ? 'Ocultar' : 'Mostrar'} tokens
-        </Button>
+      <div>
+        <h1 className="text-lg font-semibold">Integraciones</h1>
+        <p className="text-sm text-muted-foreground">
+          Las credenciales se configuran via variables de entorno (.env)
+        </p>
       </div>
 
-      {!isOwner && (
-        <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-lg px-4 py-3">
-          Solo el owner de la organización puede modificar las integraciones.
-        </div>
-      )}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">n8n</CardTitle>
+          <CardDescription>Automatización e IA</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <EnvRow label="URL de n8n" value={envVars['N8N_BASE_URL']} />
+          <EnvRow label="Webhook Secret" value={envVars['N8N_WEBHOOK_SECRET']} />
+        </CardContent>
+      </Card>
 
-      <form onSubmit={handleSave} className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Meta WhatsApp Business</CardTitle>
-            <CardDescription>Credenciales de la Cloud API de Meta para WhatsApp</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Field label="WABA ID" field="waba_id" placeholder="123456789" />
-            <Field label="Phone Number ID" field="phone_number_id" placeholder="987654321" />
-            <Field label="System User Token" field="meta_access_token" placeholder="EAAx..." type="secret" />
-          </CardContent>
-        </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Meta WhatsApp Business</CardTitle>
+          <CardDescription>Cloud API de WhatsApp</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <EnvRow label="WABA ID" value={envVars['META_WABA_ID']} />
+          <EnvRow label="Phone Number ID" value={envVars['META_PHONE_NUMBER_ID']} />
+          <EnvRow label="Access Token" value={envVars['META_ACCESS_TOKEN']} />
+        </CardContent>
+      </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">n8n</CardTitle>
-            <CardDescription>Instancia de n8n para automatización e IA</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Field label="URL de n8n" field="n8n_base_url" placeholder="https://n8n.tuempresa.com" />
-            <Field label="Webhook Secret (HMAC)" field="n8n_webhook_secret" placeholder="tu-secret-hmac" type="secret" />
-          </CardContent>
-        </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Google Calendar</CardTitle>
+          <CardDescription>Sincronización de citas</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <EnvRow label="Calendar ID" value={envVars['GOOGLE_CALENDAR_ID']} />
+          <EnvRow label="Service Account" value={envVars['GOOGLE_SERVICE_ACCOUNT_JSON']} />
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Google Calendar</CardTitle>
-            <CardDescription>Sincronización de citas con Google Calendar</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Field label="Calendar ID" field="google_calendar_id" placeholder="primary" />
-          </CardContent>
-        </Card>
-
-        {isOwner && (
-          <Button type="submit" disabled={saving}>
-            {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-            Guardar integraciones
-          </Button>
-        )}
-      </form>
+function EnvRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between items-center">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-mono text-xs truncate max-w-[200px]">{value}</span>
     </div>
   )
 }

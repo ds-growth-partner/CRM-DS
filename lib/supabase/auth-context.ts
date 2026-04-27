@@ -7,15 +7,26 @@ export type AuthContext = {
   role: string
 }
 
-/**
- * Obtiene el contexto de auth para API routes.
- * En desarrollo (sin sesión activa) usa el primer usuario del tenant.
- * En producción requiere sesión válida.
- */
+const SINGLE_TENANT_ID = process.env.SINGLE_TENANT_ID ?? ''
+
+async function getSingleTenantId(): Promise<string | null> {
+  if (SINGLE_TENANT_ID) return SINGLE_TENANT_ID
+
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('tenants')
+    .select('id')
+    .eq('is_active', true)
+    .limit(1)
+    .single()
+
+  return data?.id ?? null
+}
+
 export async function getAuthContext(): Promise<AuthContext | null> {
   const admin = createAdminClient()
   const supabase = await createClient()
-  
+
   try {
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
@@ -30,18 +41,21 @@ export async function getAuthContext(): Promise<AuthContext | null> {
     console.error('getAuthContext: error getting user', e)
   }
 
-  // Fallback for development: use the first available user
+  const tenantId = await getSingleTenantId()
+  if (!tenantId) return null
+
   const { data: fallbackUser } = await admin
     .from('users')
     .select('id, tenant_id, role')
+    .eq('tenant_id', tenantId)
     .limit(1)
     .single()
 
   if (fallbackUser) {
-    return { 
-      userId: fallbackUser.id, 
-      tenantId: fallbackUser.tenant_id, 
-      role: fallbackUser.role 
+    return {
+      userId: fallbackUser.id,
+      tenantId: fallbackUser.tenant_id,
+      role: fallbackUser.role,
     }
   }
 

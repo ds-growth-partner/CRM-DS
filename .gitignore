@@ -45,5 +45,6 @@ next-env.d.ts
 # MCP & AI
 .mcp.json
 .claude/
+.opencode/
 *.log
 *.swp

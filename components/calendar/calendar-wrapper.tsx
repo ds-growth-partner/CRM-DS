@@ -17,19 +17,17 @@ const locales = {
 const localizer = dateFnsLocalizer({
   format,
   parse,
-  startOfWeek,
+  startOfWeek: (date: Date) => startOfWeek(date, { weekStartsOn: 1 }),
   getDay,
   locales,
 })
 
-// @ts-ignore
 const DnDCalendar = withDragAndDrop(Calendar)
 
-export interface CalendarWrapperProps extends Omit<React.ComponentProps<typeof DnDCalendar>, 'localizer'> {
-  // Add any custom props here if needed
-}
+export interface CalendarWrapperProps extends Omit<React.ComponentProps<typeof DnDCalendar>, 'localizer'> {}
 
 export const CalendarWrapper = forwardRef<any, CalendarWrapperProps>((props, ref) => {
+  const { localizer: _localizer, ...rest } = props
   return (
     <div className="h-full w-full calendar-wrapper">
       <DnDCalendar
@@ -41,14 +39,14 @@ export const CalendarWrapper = forwardRef<any, CalendarWrapperProps>((props, ref
           work_week: 'Semana laboral',
           day: 'Día',
           month: 'Mes',
-          previous: 'Anterior',
-          next: 'Siguiente',
+          previous: '‹',
+          next: '›',
           today: 'Hoy',
           agenda: 'Agenda',
           showMore: (total: number) => `+${total} más`,
           noEventsInRange: 'No hay citas en este rango.',
         }}
-        {...props}
+        {...rest}
       />
     </div>
   )

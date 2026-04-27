@@ -1,39 +1,10 @@
-/**
- * POST /api/webhooks/n8n/inbound-message
- *
- * n8n llama este endpoint cuando llega un mensaje de WhatsApp o cuando el bot
- * genera una respuesta. Escribe en Supabase y el Realtime propaga el cambio al CRM.
- *
- * Autenticación: header X-N8n-Secret debe coincidir con tenant_credentials.n8n_webhook_secret
- *
- * Body esperado:
- * {
- *   tenant_id: string            // requerido
- *   wa_id: string                // número de WhatsApp del contacto (sin +)
- *   phone: string                // igual que wa_id, con formato E.164
- *   contact_name?: string        // nombre del contacto (para crearlo si no existe)
- *   message: {
- *     wa_message_id?: string     // ID de WhatsApp
- *     content?: string           // texto del mensaje
- *     content_type?: string      // 'text' | 'image' | 'audio' | 'video' | 'document' | ...
- *     direction: 'inbound' | 'outbound'
- *     sender_type: 'contact' | 'bot' | 'agent'
- *     media_url?: string
- *     media_mime_type?: string
- *     media_filename?: string
- *     template_name?: string
- *     timestamp?: string         // ISO 8601
- *   }
- * }
- */
-
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { config } from '@/lib/config'
 
 export async function POST(request: NextRequest) {
   const admin = createAdminClient()
 
-  // Parse body first
   let body: Record<string, unknown>
   try {
     body = await request.json()
@@ -46,15 +17,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'tenant_id required' }, { status: 400 })
   }
 
-  // Validate secret if configured
-  const { data: creds } = await admin
-    .from('tenant_credentials')
-    .select('n8n_webhook_secret')
-    .eq('tenant_id', tenant_id)
-    .single()
-
   const incomingSecret = request.headers.get('x-n8n-secret')
-  if (creds?.n8n_webhook_secret && incomingSecret !== creds.n8n_webhook_secret) {
+  if (config.n8n.webhookSecret && incomingSecret !== config.n8n.webhookSecret) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -81,7 +45,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'wa_id and message.direction required' }, { status: 400 })
   }
 
-  // 1. Find or create contact
   let { data: contact } = await admin
     .from('contacts')
     .select('id')
@@ -118,7 +81,6 @@ export async function POST(request: NextRequest) {
     contact = newContact
   }
 
-  // 2. Find or create open conversation for this contact
   let { data: conversation } = await admin
     .from('conversations')
     .select('id, unread_count')
@@ -157,7 +119,6 @@ export async function POST(request: NextRequest) {
     conversation = newConv
   }
 
-  // 3. Update conversation metadata
   const unreadIncrement = message.direction === 'inbound' ? (conversation.unread_count ?? 0) + 1 : 0
   await admin
     .from('conversations')
@@ -173,7 +134,6 @@ export async function POST(request: NextRequest) {
     })
     .eq('id', conversation.id)
 
-  // 4. Update contact last_incoming_at if inbound
   if (message.direction === 'inbound') {
     await admin
       .from('contacts')

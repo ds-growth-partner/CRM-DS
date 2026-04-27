@@ -1,53 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAuthContext } from '@/lib/supabase/auth-context'
-import { N8nWebhookClient } from '@/lib/n8n/client'
+import { config } from '@/lib/config'
 
 export async function POST(request: NextRequest) {
   const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: creds } = await admin
-    .from('tenant_credentials')
-    .select('n8n_base_url, n8n_webhook_secret, google_calendar_id')
-    .eq('tenant_id', ctx.tenantId)
-    .single()
-
   const body = await request.json()
-  const payload = {
-    ...body,
-    tenant_id: ctx.tenantId,
-    google_calendar_id: creds?.google_calendar_id ?? 'primary',
-    timestamp: new Date().toISOString(),
-  }
+  const { action, appointment: appt } = body
 
-  if (!creds?.n8n_base_url) {
-    // Dev: create/update/delete appointment directly in Supabase
-    const appt = body.appointment
-    const action = body.action
+  let resultData = null
 
-    if (action === 'delete') {
-      const { error } = await admin.from('appointments').delete().eq('id', appt.id)
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-      return NextResponse.json({ ok: true, dev: true })
-    }
-
-    if (action === 'update') {
-      const { data, error } = await admin.from('appointments').update({
-        title: appt.title,
-        description: appt.description,
-        contact_id: appt.contact_id ?? null,
-        assigned_to: appt.assigned_to ?? ctx.userId,
-        start_time: appt.start_time,
-        end_time: appt.end_time,
-        timezone: appt.timezone ?? 'America/Bogota',
-        location: appt.location,
-      }).eq('id', appt.id).select().single()
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-      return NextResponse.json({ ok: true, dev: true, data })
-    }
-
+  if (action === 'delete') {
+    const { error } = await admin.from('appointments').delete().eq('id', appt.id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  } else if (action === 'update') {
+    const { data, error } = await admin.from('appointments').update({
+      title: appt.title,
+      description: appt.description,
+      contact_id: appt.contact_id ?? null,
+      assigned_to: appt.assigned_to ?? ctx.userId,
+      start_time: appt.start_time,
+      end_time: appt.end_time,
+      timezone: appt.timezone ?? 'America/Bogota',
+      location: appt.location,
+      status: appt.status ?? 'scheduled',
+    }).eq('id', appt.id).select().single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    resultData = data
+  } else {
     const { data, error } = await admin.from('appointments').insert({
       tenant_id: ctx.tenantId,
       title: appt.title,
@@ -58,15 +41,38 @@ export async function POST(request: NextRequest) {
       end_time: appt.end_time,
       timezone: appt.timezone ?? 'America/Bogota',
       location: appt.location,
+      status: 'scheduled',
       created_by: 'manual',
       created_by_user_id: ctx.userId,
     }).select().single()
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ ok: true, dev: true, data })
+    resultData = data
   }
 
-  const client = new N8nWebhookClient(creds.n8n_base_url, creds.n8n_webhook_secret ?? '')
-  const res = await client.post('calendar-event', payload)
-  const data = await res.json().catch(() => ({}))
-  return NextResponse.json(data, { status: res.status })
+  const n8nUrl = process.env.N8N_BASE_URL
+  if (n8nUrl) {
+    let contact = null
+    if (appt.contact_id) {
+      const { data } = await admin.from('contacts').select('first_name, last_name, email, phone').eq('id', appt.contact_id).single()
+      contact = data
+    }
+
+    const payload = {
+      action,
+      appointment: { ...appt, ...(resultData || {}) },
+      contact,
+      tenant_id: ctx.tenantId,
+      google_calendar_id: config.google.calendarId,
+      timestamp: new Date().toISOString(),
+    }
+
+    const { n8nClient } = await import('@/lib/n8n/client')
+    try {
+      await n8nClient.post('calendar-event', payload)
+    } catch (e) {
+      console.error('Error triggering n8n calendar-event:', e)
+    }
+  }
+
+  return NextResponse.json({ ok: true, data: resultData })
 }

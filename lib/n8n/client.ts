@@ -1,15 +1,16 @@
-import crypto from 'crypto'
+import { config } from '@/lib/config'
 
 export class N8nWebhookClient {
   private baseUrl: string
   private secret: string
 
-  constructor(baseUrl: string, secret: string) {
-    this.baseUrl = baseUrl.replace(/\/$/, '')
-    this.secret = secret
+  constructor() {
+    this.baseUrl = config.n8n.baseUrl.replace(/\/$/, '')
+    this.secret = config.n8n.webhookSecret
   }
 
   private sign(body: string): string {
+    const crypto = require('crypto')
     return crypto.createHmac('sha256', this.secret).update(body).digest('hex')
   }
 
@@ -27,3 +28,5 @@ export class N8nWebhookClient {
     })
   }
 }
+
+export const n8nClient = new N8nWebhookClient()

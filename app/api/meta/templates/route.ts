@@ -1,28 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAuthContext } from '@/lib/supabase/auth-context'
+import { config } from '@/lib/config'
 
 export async function GET() {
   const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: creds } = await admin
-    .from('tenant_credentials')
-    .select('waba_id, meta_access_token')
-    .eq('tenant_id', ctx.tenantId)
-    .single()
 
-  if (!creds?.meta_access_token || !creds?.waba_id) {
-    // Return cached templates from Supabase
+  if (!config.meta.accessToken || !config.meta.wabaId) {
     const { data } = await admin.from('hsm_templates').select('*').eq('tenant_id', ctx.tenantId).order('created_at', { ascending: false })
     return NextResponse.json({ templates: data ?? [] })
   }
 
-  // Fetch from Meta Graph API
   const metaRes = await fetch(
-    `https://graph.facebook.com/v19.0/${creds.waba_id}/message_templates?fields=name,status,language,category,components&limit=100`,
-    { headers: { Authorization: `Bearer ${creds.meta_access_token}` } }
+    `https://graph.facebook.com/v19.0/${config.meta.wabaId}/message_templates?fields=name,status,language,category,components&limit=100`,
+    { headers: { Authorization: `Bearer ${config.meta.accessToken}` } }
   )
 
   if (!metaRes.ok) {
@@ -58,25 +52,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const admin = createAdminClient()
-  const { data: creds } = await admin
-    .from('tenant_credentials')
-    .select('waba_id, meta_access_token')
-    .eq('tenant_id', ctx.tenantId)
-    .single()
-
-  if (!creds?.meta_access_token || !creds?.waba_id) {
+  if (!config.meta.accessToken || !config.meta.wabaId) {
     return NextResponse.json({ error: 'Meta credentials not configured' }, { status: 400 })
   }
 
   const body = await request.json()
 
   const metaRes = await fetch(
-    `https://graph.facebook.com/v19.0/${creds.waba_id}/message_templates`,
+    `https://graph.facebook.com/v19.0/${config.meta.wabaId}/message_templates`,
     {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${creds.meta_access_token}`,
+        Authorization: `Bearer ${config.meta.accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
