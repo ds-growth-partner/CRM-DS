@@ -27,7 +27,6 @@ const DnDCalendar = withDragAndDrop(Calendar)
 export interface CalendarWrapperProps extends Omit<React.ComponentProps<typeof DnDCalendar>, 'localizer'> {}
 
 export const CalendarWrapper = forwardRef<any, CalendarWrapperProps>((props, ref) => {
-  const { localizer: _localizer, ...rest } = props
   return (
     <div className="h-full w-full calendar-wrapper">
       <DnDCalendar
@@ -46,7 +45,7 @@ export const CalendarWrapper = forwardRef<any, CalendarWrapperProps>((props, ref
           showMore: (total: number) => `+${total} más`,
           noEventsInRange: 'No hay citas en este rango.',
         }}
-        {...rest}
+        {...props}
       />
     </div>
   )
