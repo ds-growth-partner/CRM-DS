@@ -49,9 +49,10 @@ export async function POST(request: NextRequest) {
     resultData = data
   }
 
+  const n8nUrl = process.env.N8N_BASE_URL
   if (n8nUrl) {
-    const action = appointment?.id ? 'update' : 'create'
-    const webhookPath = action === 'create' ? 'calendar-create' : 'calendar-update'
+    const actionType = appt?.id ? 'update' : 'create'
+    const webhookPath = actionType === 'create' ? 'calendar-create' : 'calendar-update'
 
     let contact = null
     if (appt.contact_id) {
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = {
-      action,
+      action: actionType,
       appointment: { ...appt, ...(resultData || {}) },
       contact,
       tenant_id: ctx.tenantId,
