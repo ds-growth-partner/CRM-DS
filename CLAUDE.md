@@ -291,14 +291,9 @@ Notas internas sobre contactos.
 ### API Routes
 | Ruta | Método | Descripción |
 |------|--------|-------------|
-| `/api/webhooks/n8n/inbound-message` | POST | Procesar mensajes entrantes |
 | `/api/webhooks/n8n/send-message` | POST | Enviar mensaje saliente |
 | `/api/webhooks/n8n/send-campaign` | POST | Trigger campaña |
-| `/api/webhooks/n8n/move-stage` | POST | Mover contacto de fase |
-| `/api/webhooks/n8n/take-control` | POST | Tomar control humano |
-| `/api/webhooks/n8n/release-control` | POST | Liberar control a bot |
-| `/api/calendar/events` | POST | CRUD citas |
-| `/api/calendar/sync` | POST | Sync Google Calendar |
+| `/api/calendar/events` | POST | CRUD citas (dispara webhooks calendar-create/update a n8n) |
 | `/api/meta/templates` | GET | Fetch templates de Meta |
 
 ---
@@ -306,11 +301,13 @@ Notas internas sobre contactos.
 ## 5. Funcionalidades
 
 ### 5.1 WhatsApp CRM
-- **Mensajería bidireccional** via Meta WhatsApp Business Cloud API
+- **Mensajería bidireccional** via Meta WhatsApp Business Cloud API (n8n)
 - **Interfaz de chat 3 paneles:** lista de conversaciones | chat activo | detalle de contacto
+- **Realtime** mensajes via Supabase subscriptions
 - **Tipos de mensaje:** texto, imagen, audio, video, documento, sticker, ubicación, contactos, template, reacción
 - **Estados de entrega:** pending → sent → delivered → read → failed
 - **Ventana de 24 horas:** tracking de `window_expires_at` para mensajes entrantes
+- **Human/AI handoff:** `conversations.ai_active` y `contacts.ai_active` (Supabase directo, sin n8n)
 
 ### 5.2 Agente IA (n8n)
 El bot de IA (n8n) maneja:
@@ -467,18 +464,21 @@ TuContador-CRM/
 ## 8. Automatizaciones n8n
 
 **n8n maneja:**
-1. Procesamiento de mensajes entrantes de WhatsApp
-2. AI agent para calificación y respuestas
-3. Ejecución de campañas masivas
-4. Aggregación de métricas diarias (`daily_metrics`)
-5. Extracción de datos (email, teléfono, cita)
-6. Cambio automático de fases según reglas
+1. Envío de mensajes WhatsApp (`send-message`)
+2. Ejecución de campañas masivas (`send-campaign`)
+3. Crear eventos en Google Calendar (`calendar-create`)
+4. Actualizar eventos en Google Calendar (`calendar-update`)
 
-**El CRM recibe webhooks de n8n para:**
-- Nuevos mensajes (`/inbound-message`)
-- Acciones de IA (`/move-stage`, `/send-message`)
-- Control humano/bot (`/take-control`, `/release-control`)
-- Campañas (`/send-campaign`)
+**El CRM envía webhooks a n8n:**
+- Enviar mensaje (`/send-message`)
+- Ejecutar campaña (`/send-campaign`)
+- Crear evento (`/calendar-create`)
+- Actualizar evento (`/calendar-update`)
+
+**Lo que Supabase maneja directo (sin n8n):**
+- Mensajes entrantes → Realtime subscriptions
+- Mover fases → `contacts.funnel_stage_id` directo
+- Human/AI handoff → `conversations.ai_active` directo
 
 ---
 

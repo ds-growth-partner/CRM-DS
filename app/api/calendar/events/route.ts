@@ -49,8 +49,10 @@ export async function POST(request: NextRequest) {
     resultData = data
   }
 
-  const n8nUrl = process.env.N8N_BASE_URL
   if (n8nUrl) {
+    const action = appointment?.id ? 'update' : 'create'
+    const webhookPath = action === 'create' ? 'calendar-create' : 'calendar-update'
+
     let contact = null
     if (appt.contact_id) {
       const { data } = await admin.from('contacts').select('first_name, last_name, email, phone').eq('id', appt.contact_id).single()
@@ -68,9 +70,9 @@ export async function POST(request: NextRequest) {
 
     const { n8nClient } = await import('@/lib/n8n/client')
     try {
-      await n8nClient.post('calendar-event', payload)
+      await n8nClient.post(webhookPath, payload)
     } catch (e) {
-      console.error('Error triggering n8n calendar-event:', e)
+      console.error(`Error triggering n8n ${webhookPath}:`, e)
     }
   }
 

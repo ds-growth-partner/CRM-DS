@@ -15,7 +15,7 @@ import {
 import type { ContactWithDetails, FunnelStage } from '@/lib/types/database'
 import { KanbanColumn } from './kanban-column'
 import { KanbanCard } from './kanban-card'
-import { toast } from 'sonner'
+import { useSupabase } from '@/providers/supabase-provider'
 
 type ContactWithTags = ContactWithDetails & { tags?: { id: string; name: string; color: string }[] }
 
@@ -41,6 +41,7 @@ const NO_STAGE: FunnelStage = {
 }
 
 export function ContactsKanban({ contacts, stages, onStageChange }: ContactsKanbanProps) {
+  const { supabase } = useSupabase()
   const [localContacts, setLocalContacts] = useState(contacts)
   const [activeContact, setActiveContact] = useState<ContactWithTags | null>(null)
   const [overColumnId, setOverColumnId] = useState<string | null>(null)
@@ -84,7 +85,6 @@ export function ContactsKanban({ contacts, stages, onStageChange }: ContactsKanb
     const currentColumnId = contact.funnel_stage_id ?? NO_STAGE_ID
     if (currentColumnId === newStageId) return
 
-    const prevStage = stages.find(s => s.id === contact.funnel_stage_id)
     const newStage = newStageId === NO_STAGE_ID
       ? NO_STAGE
       : stages.find(s => s.id === newStageId)
@@ -97,20 +97,12 @@ export function ContactsKanban({ contacts, stages, onStageChange }: ContactsKanb
     )
 
     try {
-      const res = await fetch('/api/webhooks/n8n/move-stage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contact_id: contactId,
-          previous_stage_id: contact.funnel_stage_id,
-          new_stage_id: newFunnelStageId,
-          previous_stage_name: prevStage?.name,
-          new_stage_name: newStage?.name,
-          reason: 'manual',
-        }),
-      })
+      const { error } = await supabase
+        .from('contacts')
+        .update({ funnel_stage_id: newFunnelStageId, updated_at: new Date().toISOString() })
+        .eq('id', contactId)
 
-      if (!res.ok) throw new Error()
+      if (error) throw error
       onStageChange?.(contactId, newStageId)
       toast.success(`Movido a ${newStage?.name ?? 'Sin etapa'}`)
     } catch {
