@@ -8,8 +8,7 @@ const PAGE_SIZE = 60
 
 /**
  * Loads messages from n8n_chat_histories for a given contact wa_id.
- * n8n stores session_id as "<phone>@s.whatsapp.net" (WhatsApp Web format).
- * wa_id in the CRM is stored as the phone number without the @s.whatsapp.net suffix.
+ * session_id = wa_id directamente (ej: "573001234567"), sin sufijos.
  */
 export function useN8nMessages(waId: string | null | undefined) {
   const { supabase } = useSupabase()
@@ -22,8 +21,8 @@ export function useN8nMessages(waId: string | null | undefined) {
   const prevSessionIdRef = useRef<string | null>(null)
   const initializedRef = useRef(false)
 
-  // n8n session_id is "<waId>@s.whatsapp.net" for WhatsApp, but could be a hash for webchat.
-  const sessionId = waId ? (/^\d+$/.test(waId) ? `${waId}@s.whatsapp.net` : waId) : null
+  // session_id es el número de WhatsApp directamente (ej: "573001234567")
+  const sessionId = waId ?? null
 
   const loadInitial = useCallback(async (sid: string | null) => {
     if (!sid) {

@@ -164,7 +164,7 @@ export function Composer({
     setText('')
     setAttachments([])
 
-    const n8nSessionId = waId ? (/^\d+$/.test(waId) ? `${waId}@s.whatsapp.net` : waId) : null
+    const n8nSessionId = waId ?? null
 
     try {
       const now = new Date().toISOString()
