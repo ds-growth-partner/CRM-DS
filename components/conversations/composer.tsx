@@ -250,9 +250,12 @@ export function Composer({
             contact_id: contactId,
             conversation_id: conversationId,
           }
-          await fetch('/api/webhooks/n8n/send-message?x-vercel-protection-bypass=C72OY1TtIUTUO8UK0rlFa5raczsn2WeA', {
+          await fetch('/api/webhooks/n8n/send-message', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'x-vercel-protection-bypass': 'C72OY1TtIUTUO8UK0rlFa5raczsn2WeA',
+            },
             body: JSON.stringify(webhookPayload),
           })
         } catch {
