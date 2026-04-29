@@ -247,7 +247,16 @@ export function Composer({
             wa_id: n8nSessionId,
             message: resolved || `[${getContentType(attachments[0]?.file ?? { type: '' } as File)}] ${attachments[0]?.file.name}`,
             media_url: attachments.length > 0 ? await uploadFile(attachments[0].file) : undefined,
-            contact_id: contactId,
+            contact: contact ? {
+              id: contact.id,
+              first_name: contact.first_name,
+              last_name: contact.last_name,
+              phone: contact.phone,
+              email: contact.email,
+              wa_id: contact.wa_id,
+              company: contact.company,
+              custom_fields: contact.custom_fields,
+            } : null,
             conversation_id: conversationId,
           }
           await fetch('/api/webhooks/n8n/send-message', {
