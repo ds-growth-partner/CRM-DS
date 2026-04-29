@@ -1,13 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useContacts } from '@/hooks/use-contacts'
 import { ContactsTable } from '@/components/contacts/contacts-table'
 import { ContactsKanban } from '@/components/contacts/contacts-kanban'
+import { ImportContactsDialog } from '@/components/contacts/import-contacts-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useSupabase } from '@/providers/supabase-provider'
-import { useEffect } from 'react'
 import type { FunnelStage } from '@/lib/types/database'
 import { LayoutGrid, Table2, Search, Download, Upload, Plus } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -17,8 +17,9 @@ import { toast } from 'sonner'
 export default function ContactsPage() {
   const [view, setView] = useState<'table' | 'kanban'>('table')
   const [search, setSearch] = useState('')
+  const [importOpen, setImportOpen] = useState(false)
   const debouncedSearch = useDebounce(search, 300)
-  const { contacts, loading, total } = useContacts({ search: debouncedSearch })
+  const { contacts, loading, total, refetch } = useContacts({ search: debouncedSearch })
   const { supabase } = useSupabase()
   const [stages, setStages] = useState<FunnelStage[]>([])
 
@@ -95,7 +96,7 @@ export default function ContactsPage() {
             <Download className="h-3.5 w-3.5 mr-1.5" />
             Exportar
           </Button>
-          <Button variant="outline" size="sm" className="h-8 text-xs" disabled title="Próximamente">
+          <Button variant="outline" size="sm" className="h-8 text-xs cursor-pointer" onClick={() => setImportOpen(true)}>
             <Upload className="h-3.5 w-3.5 mr-1.5" />
             Importar
           </Button>
@@ -105,6 +106,12 @@ export default function ContactsPage() {
           </Button>
         </div>
       </div>
+
+      <ImportContactsDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={refetch}
+      />
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
