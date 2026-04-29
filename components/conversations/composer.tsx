@@ -252,10 +252,7 @@ export function Composer({
           }
           await fetch('/api/webhooks/n8n/send-message', {
             method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'x-vercel-protection-bypass': 'C72OY1TtIUTUO8UK0rlFa5raczsn2WeA',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(webhookPayload),
           })
         } catch {
