@@ -240,6 +240,26 @@ export function Composer({
         updated_at: now,
       }).eq('id', contactId)
 
+      // Call n8n webhook to send via WhatsApp API
+      if (n8nSessionId && (hasText || hasFiles)) {
+        try {
+          const webhookPayload = {
+            wa_id: n8nSessionId,
+            message: resolved || `[${getContentType(attachments[0]?.file ?? { type: '' } as File)}] ${attachments[0]?.file.name}`,
+            media_url: attachments.length > 0 ? await uploadFile(attachments[0].file) : undefined,
+            contact_id: contactId,
+            conversation_id: conversationId,
+          }
+          await fetch('/api/webhooks/n8n/send-message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(webhookPayload),
+          })
+        } catch {
+          console.error('n8n webhook failed')
+        }
+      }
+
       onMessageSent?.()
     } catch {
       toast.error('Error al enviar mensaje')
