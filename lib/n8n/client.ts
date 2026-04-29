@@ -16,14 +16,17 @@ export class N8nWebhookClient {
 
   async post(path: string, payload: unknown): Promise<Response> {
     const body = JSON.stringify(payload)
-    const signature = this.sign(body)
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+
+    if (this.secret) {
+      headers['X-Webhook-Signature'] = this.sign(body)
+    }
 
     return fetch(`${this.baseUrl}/webhook/${path}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Webhook-Signature': signature,
-      },
+      headers,
       body,
     })
   }
