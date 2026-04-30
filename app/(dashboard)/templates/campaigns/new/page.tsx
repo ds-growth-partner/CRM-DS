@@ -493,18 +493,6 @@ export default function NewCampaignPage() {
     setSending(true)
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('No authenticated user')
-
-      const { data: userRecord } = await supabase
-        .from('users')
-        .select('tenant_id')
-        .eq('id', user.id)
-        .single()
-
-      const tenantId = userRecord?.tenant_id
-      if (!tenantId) throw new Error('No tenant found')
-
       const TEST_TENANT_ID = 'cdaeb024-aaaf-4a8c-9413-0eb76c422bce'
 
       const { data: campaign, error: campaignError } = await supabase
