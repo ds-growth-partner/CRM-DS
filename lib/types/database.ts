@@ -247,10 +247,10 @@ export type Database = {
           name: string
           description: string | null
           template_id: string | null
-          template_name: string
+          template_name: string | null
           template_variables: Json | null
-          segment_filters: Json
-          total_contacts: number
+          segment_filters: Json | null
+          target_count: number
           status: 'draft' | 'scheduled' | 'sending' | 'completed' | 'failed' | 'cancelled'
           scheduled_at: string | null
           started_at: string | null
