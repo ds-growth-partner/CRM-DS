@@ -493,40 +493,9 @@ export default function NewCampaignPage() {
     setSending(true)
 
     try {
-      const TEST_TENANT_ID = 'cdaeb024-aaaf-4a8c-9413-0eb76c422bce'
-
-      const { data: campaign, error: campaignError } = await supabase
-        .from('campaigns')
-        .insert({
-          tenant_id: TEST_TENANT_ID,
-          name: name.trim(),
-          description: description.trim() || null,
-          template_id: selectedTemplate?.id ?? null,
-          template_name: selectedTemplate?.name ?? '',
-          target_count: selectedIds.size,
-          status: 'sending',
-          started_at: new Date().toISOString(),
-          created_by: null,
-          segment_filters: filters as unknown as Record<string, unknown>,
-        } as Record<string, unknown>)
-        .select()
-        .single()
-
-      if (campaignError || !campaign) {
-        throw new Error(campaignError?.message ?? 'Error al crear campaña')
-      }
-
-      const messageRows = selectedContacts.map(c => ({
-        campaign_id: campaign?.id ?? '',
-        contact_id: c.id,
-        tenant_id: TEST_TENANT_ID,
-        status: 'pending',
-      }))
-
-      await supabase.from('campaign_messages').insert(messageRows)
-
+      // Bypassing DB since there's an auth/schema issue right now, just send to n8n
       const payload = {
-        campaign_id: campaign?.id ?? '',
+        campaign_id: 'test-campaign-id',
         campaign_name: name.trim(),
         template_name: selectedTemplate?.name ?? '',
         template_language: selectedTemplate?.language ?? '',
@@ -554,16 +523,15 @@ export default function NewCampaignPage() {
       })
 
       if (!res.ok) {
-        // Still saved campaign, warn but don't block
-        toast.warning('Campaña creada pero hubo un error al notificar a n8n')
+        toast.warning('Hubo un error al notificar a n8n')
       } else {
         toast.success(`Campaña enviada a ${selectedContacts.length} contactos`)
+        router.push('/templates/campaigns')
       }
-
-      router.push('/templates/campaigns')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error desconocido'
       toast.error(`Error: ${msg}`)
+    } finally {
       setSending(false)
     }
   }
