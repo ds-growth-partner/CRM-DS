@@ -197,21 +197,7 @@ export function Composer({
           updated_at: now,
         }).eq('id', conversationId)
 
-        // Also write to n8n_chat_histories so the AI agent keeps context
         if (waId) {
-          await supabase.from('n8n_chat_histories').insert({
-            session_id: waId,
-            message: {
-              type: 'ai',
-              content: resolved,
-              tool_calls: [],
-              additional_kwargs: { sender: 'agent' },
-              response_metadata: {},
-            },
-            time_stamp: now,
-          }).then(() => {}) // fire-and-forget, don't block
-          
-          // Call n8n webhook for TEXT
           try {
             await fetch('/api/webhooks/n8n/send-message', {
               method: 'POST',
@@ -262,19 +248,6 @@ export function Composer({
           })
 
           if (waId) {
-            // Also write to n8n_chat_histories
-            await supabase.from('n8n_chat_histories').insert({
-              session_id: waId,
-              message: {
-                type: 'ai',
-                content: `[${ct}] ${file.name}\n${mediaUrl}`,
-                tool_calls: [],
-                additional_kwargs: { sender: 'agent' },
-                response_metadata: {},
-              },
-              time_stamp: now,
-            }).then(() => {}) // fire-and-forget
-
             // Call n8n webhook for FILE
             try {
               await fetch('/api/webhooks/n8n/send-message', {

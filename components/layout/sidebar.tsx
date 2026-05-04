@@ -18,6 +18,7 @@ import {
   LogOut,
   Zap,
   X,
+  Send,
 } from 'lucide-react'
 import { useSupabase } from '@/providers/supabase-provider'
 import { useRouter } from 'next/navigation'
@@ -26,7 +27,8 @@ const NAV_ITEMS = [
   { href: '/conversations', label: 'Conversaciones', icon: MessageSquare },
   { href: '/contacts',      label: 'Contactos',      icon: Users },
   { href: '/calendar',      label: 'Calendario',     icon: Calendar },
-  { href: '/templates',     label: 'Plantillas',     icon: FileText },
+  { href: '/templates',      label: 'Plantillas',     icon: FileText },
+  { href: '/campaigns',     label: 'Campañas',       icon: Send },
   { href: '/reports',       label: 'Reportes',       icon: BarChart3 },
 ]
 

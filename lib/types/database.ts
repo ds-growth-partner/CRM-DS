@@ -272,24 +272,44 @@ export type Database = {
           description: string | null
           template_id: string | null
           template_name: string | null
+          template_language: string | null
+          template_body: string | null
+          template_variables_count: number
           template_variables: Json | null
+          variable_mappings: string[] | null
           segment_filters: Json | null
           target_count: number
-          status: 'draft' | 'scheduled' | 'sending' | 'completed' | 'failed' | 'cancelled'
-          scheduled_at: string | null
-          started_at: string | null
-          completed_at: string | null
           sent_count: number
           delivered_count: number
           read_count: number
           replied_count: number
           failed_count: number
+          status: 'draft' | 'scheduled' | 'sending' | 'completed' | 'failed' | 'cancelled'
+          scheduled_at: string | null
+          started_at: string | null
+          completed_at: string | null
           created_by: string | null
           created_at: string
           updated_at: string
         }
         Insert: Omit<Database['public']['Tables']['campaigns']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['campaigns']['Insert']>
+      }
+      campaign_recipients: {
+        Row: {
+          id: string
+          campaign_id: string
+          contact_id: string
+          status: string | null
+          sent_at: string | null
+          delivered_at: string | null
+          read_at: string | null
+          error_message: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['campaign_recipients']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['campaign_recipients']['Insert']>
       }
       phase_transitions: {
         Row: {

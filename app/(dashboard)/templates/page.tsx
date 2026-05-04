@@ -71,7 +71,7 @@ export default function TemplatesPage() {
             <Plus className="h-4 w-4 mr-1.5" />
             Nueva plantilla
           </Button>
-          <Link href="/templates/campaigns">
+          <Link href="/campaigns/new">
             <Button variant="outline" size="sm">
               <MessageSquare className="h-4 w-4 mr-1.5" />
               Campañas

@@ -43,7 +43,7 @@ export default function CampaignsPage() {
           <p className="text-[11px] text-muted-foreground">{campaigns.length} campaña{campaigns.length !== 1 ? 's' : ''}</p>
         </div>
         <div className="ml-auto">
-          <Link href="/templates/campaigns/new">
+          <Link href="/campaigns/new">
             <Button size="sm" className="h-8 text-xs">
               <Plus className="h-3.5 w-3.5 mr-1.5" />
               Nueva campaña
@@ -62,7 +62,7 @@ export default function CampaignsPage() {
             <Send className="h-12 w-12 text-muted-foreground/30 mb-4" />
             <h3 className="text-base font-medium mb-1">Sin campañas</h3>
             <p className="text-sm text-muted-foreground mb-4">Crea tu primera campaña masiva de WhatsApp</p>
-            <Link href="/templates/campaigns/new">
+            <Link href="/campaigns/new">
               <Button size="sm">Crear campaña</Button>
             </Link>
           </div>
@@ -100,15 +100,14 @@ export default function CampaignsPage() {
                       )}
                     </div>
 
-                    <Link href={`/templates/campaigns/${campaign.id}`}>
+                    <Link href={`/campaigns/${campaign.id}`}>
                       <Button variant="outline" size="sm" className="h-8 text-xs shrink-0">
                         <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
-                        Métricas
+                        Ver detalle
                       </Button>
                     </Link>
                   </div>
 
-                  {/* Stats row */}
                   {total > 0 && (
                     <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
@@ -135,7 +134,6 @@ export default function CampaignsPage() {
                     </div>
                   )}
 
-                  {/* Progress bar */}
                   {(campaign.status === 'sending' || campaign.status === 'completed') && total > 0 && (
                     <div className="mt-3">
                       <div className="flex justify-between text-[10px] text-muted-foreground mb-1">

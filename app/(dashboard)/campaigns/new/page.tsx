@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSupabase } from '@/providers/supabase-provider'
-import type { HSMTemplate, ContactWithDetails } from '@/lib/types/database'
+import { useAuth } from '@/providers/auth-provider'
+import type { HSMTemplate, ContactWithDetails, Campaign } from '@/lib/types/database'
 import type { FunnelStage } from '@/lib/types/database'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,7 +14,8 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
   ArrowLeft, ArrowRight, Send, CheckCircle2, Search,
-  CheckSquare, Square, Users, MessageSquare, ChevronDown, ChevronUp
+  CheckSquare, Square, Users, MessageSquare, ChevronDown, ChevronUp,
+  Save, Loader2, Tag
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -26,9 +28,100 @@ interface ContactFilters {
   source: string
   lead_score_min: string
   lead_score_max: string
+  tag_ids: string[]
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Variable mapping ─────────────────────────────────────────────────────
+const FIELD_OPTIONS = [
+  { key: 'first_name', label: 'Nombre' },
+  { key: 'last_name', label: 'Apellido' },
+  { key: 'phone', label: 'Teléfono' },
+  { key: 'email', label: 'Email' },
+  { key: 'company', label: 'Empresa' },
+  { key: 'city', label: 'Ciudad' },
+]
+
+function scanTemplateVariables(body: string): { num: number; placeholder: string }[] {
+  const matches = body.match(/\{\{(\d+)\}\}/g) ?? []
+  const seen = new Set<number>()
+  const result: { num: number; placeholder: string }[] = []
+  for (const m of matches) {
+    const num = parseInt(m.replace(/\D/g, ''))
+    if (!seen.has(num)) {
+      seen.add(num)
+      result.push({ num, placeholder: m })
+    }
+  }
+  return result.sort((a, b) => a.num - b.num)
+}
+
+function VariableMapping({
+  variables,
+  mappings,
+  onChange,
+}: {
+  variables: { num: number; placeholder: string }[]
+  mappings: string[]
+  onChange: (index: number, value: string) => void
+}) {
+  if (variables.length === 0) return null
+
+  return (
+    <div className="space-y-3 border border-border rounded-xl p-4 bg-muted/20">
+      <div className="flex items-center gap-2 mb-1">
+        <MessageSquare className="h-4 w-4 text-primary" />
+        <h3 className="text-sm font-semibold text-foreground">Mapeo de variables</h3>
+        <span className="text-[10px] text-muted-foreground ml-auto">
+          Asigna cada variable a un campo del contacto
+        </span>
+      </div>
+
+      {/* Variable previews from body */}
+      <div className="bg-background/60 rounded-lg p-3 text-xs text-muted-foreground leading-relaxed border border-border">
+        {variables.map((v) => (
+          <span key={v.num} className="bg-primary/10 text-primary border border-primary/20 rounded px-1 mx-0.5 font-mono">
+            {`{{${v.num}}}`}
+          </span>
+        ))}
+      </div>
+
+      <div className="space-y-2">
+        {variables.map((v, i) => (
+          <div key={v.num} className="flex items-center gap-3">
+            <div className="w-24 shrink-0">
+              <span className="text-xs font-mono text-primary bg-primary/10 border border-primary/20 rounded px-1.5 py-0.5">
+                {`{{${v.num}}}`}
+              </span>
+            </div>
+            <div className="flex-1">
+              <select
+                value={mappings[i] ?? ''}
+                onChange={e => onChange(i, e.target.value)}
+                className="w-full h-8 text-xs rounded-md border border-border bg-background px-2.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">— seleccionar campo —</option>
+                {FIELD_OPTIONS.map(f => (
+                  <option key={f.key} value={f.key}>{f.label}</option>
+                ))}
+              </select>
+            </div>
+            {mappings[i] && (
+              <span className="text-[10px] text-muted-foreground shrink-0">
+                {FIELD_OPTIONS.find(f => f.key === mappings[i])?.label ?? mappings[i]}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <p className="text-[10px] text-muted-foreground/70 italic">
+        Los valores se reemplazan automáticamente al enviar la campaña a cada contacto.
+      </p>
+    </div>
+  )
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
 const CATEGORY_LABELS: Record<string, string> = {
   MARKETING: 'Marketing',
   UTILITY: 'Utilidad',
@@ -44,23 +137,34 @@ const SOURCE_LABELS: Record<string, string> = {
   campaign: 'Campaña',
 }
 
-// ─── Step 1: Info + Template ─────────────────────────────────────────────────
+// ─── Step 1: Info + Template + Variables ──────────────────────────────────
 function StepTemplate({
   name, setName,
   description, setDescription,
   templates, loading,
   selectedTemplate, setSelectedTemplate,
+  variableMappings, setVariableMappings,
 }: {
   name: string; setName: (v: string) => void
   description: string; setDescription: (v: string) => void
   templates: HSMTemplate[]; loading: boolean
   selectedTemplate: HSMTemplate | null; setSelectedTemplate: (t: HSMTemplate | null) => void
+  variableMappings: string[]; setVariableMappings: (m: string[]) => void
 }) {
   const approved = templates.filter(t => t.status === 'APPROVED')
 
+  const templateVariables = selectedTemplate
+    ? scanTemplateVariables(selectedTemplate.body_text)
+    : []
+
+  function handleVariableChange(index: number, value: string) {
+    const next = [...variableMappings]
+    next[index] = value
+    setVariableMappings(next)
+  }
+
   return (
     <div className="space-y-6">
-      {/* Campaign info */}
       <div className="space-y-3">
         <h2 className="text-sm font-semibold text-foreground">Información de la campaña</h2>
         <div className="space-y-2">
@@ -84,7 +188,6 @@ function StepTemplate({
         </div>
       </div>
 
-      {/* Template picker */}
       <div className="space-y-3">
         <h2 className="text-sm font-semibold text-foreground">Selecciona una plantilla HSM</h2>
         {loading ? (
@@ -98,13 +201,17 @@ function StepTemplate({
             <p className="text-xs text-muted-foreground/60 mt-1">Sincroniza tus plantillas desde Meta Business Manager</p>
           </div>
         ) : (
-          <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+          <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
             {approved.map(template => {
               const selected = selectedTemplate?.id === template.id
+              const vars = scanTemplateVariables(template.body_text)
               return (
                 <button
                   key={template.id}
-                  onClick={() => setSelectedTemplate(selected ? null : template)}
+                  onClick={() => {
+                    setSelectedTemplate(selected ? null : template)
+                    if (!selected) setVariableMappings([])
+                  }}
                   className={cn(
                     'w-full text-left border rounded-xl p-4 transition-all cursor-pointer',
                     selected
@@ -125,8 +232,11 @@ function StepTemplate({
                         <p className="text-xs font-medium text-foreground mb-1">{template.header_text}</p>
                       )}
                       <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">{template.body_text}</p>
-                      {template.variables_count > 0 && (
-                        <p className="text-[10px] text-primary mt-1.5">{template.variables_count} variable{template.variables_count !== 1 ? 's' : ''}</p>
+                      {vars.length > 0 && (
+                        <p className="text-[10px] text-primary mt-1.5">
+                          {vars.length} variable{vars.length !== 1 ? 's' : ''}{' '}
+                          {vars.map(v => v.placeholder).join(', ')}
+                        </p>
                       )}
                     </div>
                     <div className={cn(
@@ -142,24 +252,53 @@ function StepTemplate({
           </div>
         )}
       </div>
+
+      {selectedTemplate && templateVariables.length > 0 && (
+        <VariableMapping
+          variables={templateVariables}
+          mappings={variableMappings}
+          onChange={handleVariableChange}
+        />
+      )}
+
+      {selectedTemplate && templateVariables.length === 0 && (
+        <div className="border border-emerald-500/20 bg-emerald-500/5 rounded-xl p-3 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+          <p className="text-xs text-emerald-600 dark:text-emerald-400">
+            Esta plantilla no tiene variables. Puedes continuar.
+          </p>
+        </div>
+      )}
     </div>
   )
 }
 
-// ─── Step 2: Select contacts ─────────────────────────────────────────────────
+// ─── Step 2: Select contacts ───────────────────────────────────────────────
 function StepContacts({
   contacts, loading,
   selected, onToggle, onSelectAll, onClearAll,
   stages,
   filters, setFilters,
+  tags,
 }: {
   contacts: ContactWithDetails[]; loading: boolean
   selected: Set<string>; onToggle: (id: string) => void
   onSelectAll: () => void; onClearAll: () => void
   stages: FunnelStage[]
   filters: ContactFilters; setFilters: (f: ContactFilters) => void
+  tags: { id: string; name: string; color: string }[]
 }) {
   const [showFilters, setShowFilters] = useState(false)
+
+  function toggleTag(tagId: string) {
+    const current = filters.tag_ids
+    setFilters({
+      ...filters,
+      tag_ids: current.includes(tagId)
+        ? current.filter((id: string) => id !== tagId)
+        : [...current, tagId],
+    })
+  }
 
   const filtered = contacts.filter(c => {
     if (filters.search) {
@@ -171,6 +310,10 @@ function StepContacts({
     if (filters.source && c.source !== filters.source) return false
     if (filters.lead_score_min && c.lead_score < parseInt(filters.lead_score_min)) return false
     if (filters.lead_score_max && c.lead_score > parseInt(filters.lead_score_max)) return false
+    if (filters.tag_ids.length > 0) {
+      const contactTagIds = (c.tags ?? []).map((t: { id: string }) => t.id)
+      if (!filters.tag_ids.every(id => contactTagIds.includes(id))) return false
+    }
     return true
   })
 
@@ -178,19 +321,14 @@ function StepContacts({
 
   function handleToggleAll() {
     if (allVisibleSelected) {
-      filtered.forEach(c => {
-        if (selected.has(c.id)) onToggle(c.id)
-      })
+      filtered.forEach(c => { if (selected.has(c.id)) onToggle(c.id) })
     } else {
-      filtered.forEach(c => {
-        if (!selected.has(c.id)) onToggle(c.id)
-      })
+      filtered.forEach(c => { if (!selected.has(c.id)) onToggle(c.id) })
     }
   }
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
       <div className="border border-border rounded-xl overflow-hidden">
         <button
           onClick={() => setShowFilters(!showFilters)}
@@ -258,11 +396,49 @@ function StepContacts({
                 onChange={e => setFilters({ ...filters, lead_score_max: e.target.value })}
               />
             </div>
+
+            <div className="col-span-2">
+              <label className="text-xs text-muted-foreground mb-1.5 block flex items-center gap-1">
+                <Tag className="h-3 w-3" />
+                Etiquetas
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {tags.map(tag => {
+                  const isActive = filters.tag_ids.includes(tag.id)
+                  return (
+                    <button
+                      key={tag.id}
+                      onClick={() => toggleTag(tag.id)}
+                      className={cn(
+                        'flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-medium border transition-colors cursor-pointer',
+                        isActive
+                          ? 'text-white'
+                          : 'text-muted-foreground border-border hover:border-primary/40'
+                      )}
+                      style={isActive ? { backgroundColor: tag.color, borderColor: tag.color } : {}}
+                    >
+                      <span
+                        className="h-2 w-2 rounded-full shrink-0"
+                        style={{ backgroundColor: isActive ? 'rgba(255,255,255,0.5)' : tag.color }}
+                      />
+                      {tag.name}
+                    </button>
+                  )
+                })}
+                {tags.length === 0 && (
+                  <span className="text-[10px] text-muted-foreground/50 italic">Sin etiquetas disponibles</span>
+                )}
+              </div>
+              {filters.tag_ids.length > 0 && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {filters.tag_ids.length} etiqueta{filters.tag_ids.length !== 1 ? 's' : ''} seleccionada{filters.tag_ids.length !== 1 ? 's' : ''}
+                </p>
+              )}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {loading ? 'Cargando...' : `${filtered.length} contactos · ${selected.size} seleccionados`}
@@ -279,7 +455,6 @@ function StepContacts({
         </div>
       </div>
 
-      {/* Contacts list */}
       {loading ? (
         <div className="space-y-2">
           {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-12 rounded-lg" />)}
@@ -306,10 +481,7 @@ function StepContacts({
                 )}
               >
                 <div className={cn('shrink-0 text-primary', !isSelected && 'text-muted-foreground/40')}>
-                  {isSelected
-                    ? <CheckSquare className="h-4 w-4" />
-                    : <Square className="h-4 w-4" />
-                  }
+                  {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">{name}</p>
@@ -335,13 +507,18 @@ function StepContacts({
 
 // ─── Step 3: Confirm ─────────────────────────────────────────────────────────
 function StepConfirm({
-  name, description, selectedTemplate, selectedContacts, sending,
+  name, description, selectedTemplate, selectedContacts, variableMappings,
+  sending, saving,
 }: {
   name: string; description: string
   selectedTemplate: HSMTemplate | null
   selectedContacts: ContactWithDetails[]
+  variableMappings: string[]
   sending: boolean
+  saving: boolean
 }) {
+  const templateVars = selectedTemplate ? scanTemplateVariables(selectedTemplate.body_text) : []
+
   return (
     <div className="space-y-6">
       <div className="border border-border rounded-xl p-4 space-y-3">
@@ -383,6 +560,19 @@ function StepConfirm({
         </div>
       )}
 
+      {templateVars.length > 0 && variableMappings.length > 0 && (
+        <div className="border border-border rounded-xl p-4">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Mapeo de variables</h3>
+          <div className="flex flex-wrap gap-2">
+            {templateVars.map((v, i) => (
+              <span key={v.num} className="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-2.5 py-1 font-mono">
+                {`{{${v.num}}}`} → {variableMappings[i] ? FIELD_OPTIONS.find(f => f.key === variableMappings[i])?.label ?? variableMappings[i] : '—'}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="border border-border rounded-xl p-4">
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
           Contactos ({selectedContacts.length})
@@ -402,42 +592,44 @@ function StepConfirm({
         </div>
       </div>
 
-      {sending && (
+      {(sending || saving) && (
         <div className="flex items-center justify-center gap-2 py-4">
-          <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-muted-foreground">Enviando campaña a n8n...</span>
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">
+            {saving ? 'Guardando campaña...' : 'Enviando campaña a n8n...'}
+          </span>
         </div>
       )}
     </div>
   )
 }
 
-// ─── Main page ───────────────────────────────────────────────────────────────
+// ─── Main page ─────────────────────────────────────────────────────────────
 export default function NewCampaignPage() {
   const router = useRouter()
   const { supabase } = useSupabase()
+  const { tenant } = useAuth()
 
-  // Wizard state
   const [step, setStep] = useState<Step>(1)
   const [sending, setSending] = useState(false)
+  const [saving, setSaving] = useState(false)
 
-  // Step 1
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [templates, setTemplates] = useState<HSMTemplate[]>([])
   const [templatesLoading, setTemplatesLoading] = useState(true)
   const [selectedTemplate, setSelectedTemplate] = useState<HSMTemplate | null>(null)
+  const [variableMappings, setVariableMappings] = useState<string[]>([])
 
-  // Step 2
   const [contacts, setContacts] = useState<ContactWithDetails[]>([])
   const [contactsLoading, setContactsLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [stages, setStages] = useState<FunnelStage[]>([])
   const [filters, setFilters] = useState<ContactFilters>({
     search: '', funnel_stage_id: '', source: '', lead_score_min: '', lead_score_max: '',
+    tag_ids: [],
   })
 
-  // Load templates
   useEffect(() => {
     supabase.from('hsm_templates').select('*').order('name').then(({ data }) => {
       setTemplates(data ?? [])
@@ -445,7 +637,6 @@ export default function NewCampaignPage() {
     })
   }, [supabase])
 
-  // Load contacts + stages
   useEffect(() => {
     supabase
       .from('contacts')
@@ -464,7 +655,13 @@ export default function NewCampaignPage() {
     supabase.from('funnel_stages').select('*').order('position').then(({ data }) => {
       setStages(data ?? [])
     })
+
+    supabase.from('tags').select('*').order('name').then(({ data }) => {
+      setAllTags(data ?? [])
+    })
   }, [supabase])
+
+  const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([])
 
   const toggleContact = useCallback((id: string) => {
     setSelectedIds(prev => {
@@ -482,26 +679,117 @@ export default function NewCampaignPage() {
 
   const selectedContacts = contacts.filter(c => selectedIds.has(c.id))
 
-  // Validation per step
+  const templateVars = selectedTemplate
+    ? scanTemplateVariables(selectedTemplate.body_text)
+    : []
+
   const canAdvance =
-    step === 1 ? name.trim().length > 0 && selectedTemplate !== null :
-    step === 2 ? selectedIds.size > 0 :
-    true
+    step === 1
+      ? name.trim().length > 0 && selectedTemplate !== null
+        && (templateVars.length === 0 || variableMappings.every(Boolean))
+      : step === 2
+      ? selectedIds.size > 0
+      : true
+
+  async function handleSaveDraft() {
+    if (!tenant || !selectedTemplate) return
+    setSaving(true)
+
+    try {
+      const selectedContactsList = contacts.filter(c => selectedIds.has(c.id))
+
+      const { data: campaignData, error: campaignError } = await supabase
+        .from('campaigns')
+        .insert({
+          tenant_id: tenant.id,
+          name: name.trim(),
+          description: description.trim() || null,
+          template_name: selectedTemplate.name,
+          template_language: selectedTemplate.language,
+          template_body: selectedTemplate.body_text,
+          template_variables_count: selectedTemplate.variables_count,
+          variable_mappings: variableMappings.filter(Boolean) as unknown as string[],
+          target_count: selectedContactsList.length,
+          sent_count: 0,
+          delivered_count: 0,
+          read_count: 0,
+          failed_count: 0,
+          status: 'draft',
+        })
+        .select()
+        .single()
+
+      if (campaignError) throw campaignError
+
+      const recipientsToInsert = selectedContactsList.map(c => ({
+        campaign_id: campaignData.id,
+        contact_id: c.id,
+        status: 'pending',
+      }))
+
+      const { error: recipientsError } = await supabase
+        .from('campaign_recipients')
+        .insert(recipientsToInsert)
+
+      if (recipientsError) throw recipientsError
+
+      toast.success('Campaña guardada como borrador')
+      router.push('/campaigns')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido'
+      toast.error(`Error: ${msg}`)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function handleSend() {
-    if (!selectedTemplate || selectedIds.size === 0) return
+    if (!tenant || !selectedTemplate || selectedIds.size === 0) return
     setSending(true)
 
     try {
-      // Bypassing DB since there's an auth/schema issue right now, just send to n8n
+      const selectedContactsList = contacts.filter(c => selectedIds.has(c.id))
+
+      const { data: campaignData, error: campaignError } = await supabase
+        .from('campaigns')
+        .insert({
+          tenant_id: tenant.id,
+          name: name.trim(),
+          description: description.trim() || null,
+          template_name: selectedTemplate.name,
+          template_language: selectedTemplate.language,
+          template_body: selectedTemplate.body_text,
+          template_variables_count: selectedTemplate.variables_count,
+          variable_mappings: variableMappings.filter(Boolean) as unknown as string[],
+          target_count: selectedContactsList.length,
+          sent_count: 0,
+          delivered_count: 0,
+          read_count: 0,
+          failed_count: 0,
+          status: 'sending',
+        })
+        .select()
+        .single()
+
+      if (campaignError) throw campaignError
+
+      const recipientsToInsert = selectedContactsList.map(c => ({
+        campaign_id: campaignData.id,
+        contact_id: c.id,
+        status: 'pending',
+      }))
+
+      await supabase.from('campaign_recipients').insert(recipientsToInsert)
+
       const payload = {
-        campaign_id: 'test-campaign-id',
+        campaign_id: campaignData.id,
         campaign_name: name.trim(),
-        template_name: selectedTemplate?.name ?? '',
-        template_language: selectedTemplate?.language ?? '',
-        template_body: selectedTemplate?.body_text ?? '',
-        template_variables_count: selectedTemplate?.variables_count ?? 0,
-        contacts: selectedContacts.map(c => ({
+        template_name: selectedTemplate.name,
+        template_language: selectedTemplate.language,
+        template_body: selectedTemplate.body_text,
+        template_variables_count: selectedTemplate.variables_count,
+        variable_mappings: variableMappings.filter(Boolean),
+        contacts: selectedContactsList.map(c => ({
           id: c.id,
           wa_id: c.wa_id,
           phone: c.phone,
@@ -513,7 +801,7 @@ export default function NewCampaignPage() {
           lead_score: c.lead_score,
           funnel_stage: (c.funnel_stage as { name?: string } | null)?.name ?? null,
         })),
-        total_contacts: selectedContacts.length,
+        total_contacts: selectedContactsList.length,
       }
 
       const res = await fetch('/api/webhooks/n8n/send-campaign', {
@@ -522,11 +810,11 @@ export default function NewCampaignPage() {
         body: JSON.stringify(payload),
       })
 
-      if (!res.ok) {
-        toast.warning('Hubo un error al notificar a n8n')
+      if (res.ok) {
+        toast.success(`Campaña enviada a ${selectedContactsList.length} contactos`)
+        router.push('/campaigns')
       } else {
-        toast.success(`Campaña enviada a ${selectedContacts.length} contactos`)
-        router.push('/templates/campaigns')
+        toast.error('Error al enviar campaña a n8n')
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error desconocido'
@@ -542,11 +830,12 @@ export default function NewCampaignPage() {
     { num: 3, label: 'Confirmar' },
   ]
 
+  const templateHasVars = templateVars.length > 0
+
   return (
     <div className="flex flex-col h-full">
-      {/* Topbar */}
       <div className="flex items-center gap-3 px-6 py-3.5 border-b border-border bg-background/80 backdrop-blur-md">
-        <Link href="/templates/campaigns">
+        <Link href="/campaigns">
           <Button variant="ghost" size="sm" className="h-8 px-2">
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -555,7 +844,6 @@ export default function NewCampaignPage() {
           <h1 className="text-base font-semibold text-foreground leading-tight">Nueva campaña</h1>
         </div>
 
-        {/* Step indicators */}
         <div className="ml-auto flex items-center gap-1">
           {STEPS.map((s, i) => (
             <div key={s.num} className="flex items-center gap-1">
@@ -573,7 +861,6 @@ export default function NewCampaignPage() {
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-2xl mx-auto">
           {step === 1 && (
@@ -582,6 +869,7 @@ export default function NewCampaignPage() {
               description={description} setDescription={setDescription}
               templates={templates} loading={templatesLoading}
               selectedTemplate={selectedTemplate} setSelectedTemplate={setSelectedTemplate}
+              variableMappings={variableMappings} setVariableMappings={setVariableMappings}
             />
           )}
           {step === 2 && (
@@ -590,6 +878,7 @@ export default function NewCampaignPage() {
               selected={selectedIds} onToggle={toggleContact}
               onSelectAll={selectAll} onClearAll={clearAll}
               stages={stages} filters={filters} setFilters={setFilters}
+              tags={allTags}
             />
           )}
           {step === 3 && (
@@ -597,24 +886,35 @@ export default function NewCampaignPage() {
               name={name} description={description}
               selectedTemplate={selectedTemplate}
               selectedContacts={selectedContacts}
-              sending={sending}
+              variableMappings={variableMappings}
+              sending={sending} saving={saving}
             />
           )}
         </div>
       </div>
 
-      {/* Footer nav */}
       <div className="px-6 py-4 border-t border-border bg-background/80 backdrop-blur-md flex items-center justify-between">
         <Button
           variant="outline" size="sm" className="h-8 text-xs"
           onClick={() => setStep(s => Math.max(1, s - 1) as Step)}
-          disabled={step === 1 || sending}
+          disabled={step === 1 || sending || saving}
         >
           <ArrowLeft className="h-3.5 w-3.5 mr-1.5" />
           Atrás
         </Button>
 
         <div className="flex items-center gap-2">
+          {step === 1 && selectedTemplate && (
+            <Button
+              variant="outline" size="sm" className="h-8 text-xs"
+              onClick={handleSaveDraft}
+              disabled={!name.trim() || saving || sending}
+            >
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
+              Guardar borrador
+            </Button>
+          )}
+
           {step < 3 ? (
             <Button
               size="sm" className="h-8 text-xs"
@@ -628,10 +928,10 @@ export default function NewCampaignPage() {
             <Button
               size="sm" className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700"
               onClick={handleSend}
-              disabled={sending || selectedIds.size === 0}
+              disabled={sending || saving || selectedIds.size === 0}
             >
               <Send className="h-3.5 w-3.5 mr-1.5" />
-              Enviar campaña ({selectedIds.size} contactos)
+              Enviar campaña ({selectedIds.size})
             </Button>
           )}
         </div>

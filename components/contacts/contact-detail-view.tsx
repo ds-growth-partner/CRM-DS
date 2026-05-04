@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation'
 import { useRealtimeContact } from '@/hooks/use-realtime-contact'
 import { useContactTags } from '@/hooks/use-contact-tags'
 import { useCustomFieldDefinitions } from '@/hooks/use-custom-field-definitions'
-import { useN8nMessages } from '@/hooks/use-n8n-messages'
+import { useMessages } from '@/hooks/use-messages'
 import { useSupabase } from '@/providers/supabase-provider'
 import { useAuth } from '@/providers/auth-provider'
-import { N8nMessageBubble } from '@/components/conversations/n8n-message-bubble'
+
+import { MessageBubble } from '@/components/conversations/message-bubble'
 import { Composer } from '@/components/conversations/composer'
 import { TagBadge } from '@/components/shared/tag-badge'
 import { LeadScoreBar } from '@/components/shared/lead-score-bar'
@@ -97,14 +98,6 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
   const { supabase } = useSupabase()
   const { tenant } = useAuth()
 
-  // ── Data hooks ──────────────────────────────────────────────────────────────
-  const { contact, loading } = useRealtimeContact(contactId)
-  const { allTags, loadingTags, loadAllTags, assignTag, removeTag } = useContactTags(contactId)
-  const { fields: customFieldDefs } = useCustomFieldDefinitions()
-  const { messages, loading: messagesLoading, hasMore, loadOlder, addOptimisticMessage } = useN8nMessages(
-    contact?.wa_id ?? null
-  )
-
   // ── Local state ─────────────────────────────────────────────────────────────
   const [stages, setStages] = useState<FunnelStage[]>([])
   const [transitions, setTransitions] = useState<PhaseTransition[]>([])
@@ -120,6 +113,14 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const [mobileTab, setMobileTab] = useState<'info' | 'chat' | 'activity' | 'appointments'>('info')
+
+  // ── Data hooks ──────────────────────────────────────────────────────────────
+  const { contact, loading } = useRealtimeContact(contactId)
+  const { allTags, loadingTags, loadAllTags, assignTag, removeTag } = useContactTags(contactId)
+  const { fields: customFieldDefs } = useCustomFieldDefinitions()
+  const { messages, loading: messagesLoading, hasMore, loadOlder, addOptimisticMessage } = useMessages(
+    conversation?.id ?? null
+  )
 
   // ── Load stages & transitions ───────────────────────────────────────────────
   useEffect(() => {
@@ -245,7 +246,7 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
   const msgGroups: MsgGroup[] = []
   let curDate = ''
   for (const entry of messages) {
-    const d = formatDate(entry.time_stamp)
+    const d = formatDate(entry.created_at)
     if (d !== curDate) { curDate = d; msgGroups.push({ date: d, entries: [] }) }
     msgGroups[msgGroups.length - 1].entries.push(entry)
   }
@@ -678,7 +679,7 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
                       </span>
                     </div>
                     {group.entries.map(entry => (
-                      <N8nMessageBubble key={entry.id} entry={entry} />
+                      <MessageBubble key={entry.id} message={entry} />
                     ))}
                   </div>
                 ))}
@@ -695,7 +696,9 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
               waId={contact.wa_id}
               lastIncomingAt={contact.last_incoming_at ?? null}
               contact={contact}
-              onOptimisticMessage={addOptimisticMessage}
+              onOptimisticMessage={(content) => {
+                if (tenant) addOptimisticMessage(content, tenant.id, contactId)
+              }}
             />
           ) : (
             <div className="border-t border-border p-4 text-center">
