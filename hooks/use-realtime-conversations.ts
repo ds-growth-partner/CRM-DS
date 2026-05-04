@@ -60,16 +60,22 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
       result = result.filter(c => c.status === filters.status)
     }
 
-    if (filters.assigned_user_id) {
-      if (filters.assigned_user_id === 'unassigned') {
+    if (filters.assigned_to) {
+      if (filters.assigned_to === 'unassigned') {
         result = result.filter(c => !c.assigned_agent_id)
       } else {
-        result = result.filter(c => c.assigned_agent_id === filters.assigned_user_id)
+        result = result.filter(c => c.assigned_agent_id === filters.assigned_to)
       }
     }
 
     if (filters.funnel_stage_id) {
       result = result.filter(c => c.contact.funnel_stage_id === filters.funnel_stage_id)
+    }
+
+    if (filters.tag_id) {
+      result = result.filter(c =>
+        (c.contact.tags ?? []).some((t: any) => t.id === filters.tag_id)
+      )
     }
 
     setConversations(result)
