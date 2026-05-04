@@ -295,21 +295,23 @@ export type Database = {
         Insert: Omit<Database['public']['Tables']['campaigns']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['campaigns']['Insert']>
       }
-      campaign_recipients: {
+      campaign_messages: {
         Row: {
           id: string
           campaign_id: string
           contact_id: string
-          status: string | null
+          tenant_id: string | null
+          status: 'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed'
+          wa_message_id: string | null
           sent_at: string | null
           delivered_at: string | null
           read_at: string | null
+          replied_at: string | null
           error_message: string | null
           created_at: string
-          updated_at: string
         }
-        Insert: Omit<Database['public']['Tables']['campaign_recipients']['Row'], 'id' | 'created_at' | 'updated_at'>
-        Update: Partial<Database['public']['Tables']['campaign_recipients']['Insert']>
+        Insert: Omit<Database['public']['Tables']['campaign_messages']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['public']['Tables']['campaign_messages']['Insert']>
       }
       phase_transitions: {
         Row: {
@@ -441,6 +443,7 @@ export type AIAction = Tables<'ai_actions'>
 export type Appointment = Tables<'appointments'>
 export type HSMTemplate = Tables<'hsm_templates'>
 export type Campaign = Tables<'campaigns'>
+export type CampaignMessage = Tables<'campaign_messages'>
 export type PhaseTransition = Tables<'phase_transitions'>
 export type ActivityLog = Tables<'activity_log'>
 export type DailyMetrics = Tables<'daily_metrics'>

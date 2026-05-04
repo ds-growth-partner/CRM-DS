@@ -12,8 +12,6 @@ export function useMessages(conversationId: string | null | undefined) {
   const [loading, setLoading] = useState(true)
   const [hasMore, setHasMore] = useState(false)
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
-  const prevConvIdRef = useRef<string | null>(null)
-  const initializedRef = useRef(false)
 
   const loadInitial = useCallback(async (convId: string | null) => {
     if (!convId) {
@@ -25,12 +23,18 @@ export function useMessages(conversationId: string | null | undefined) {
 
     setLoading(true)
 
-    const { data, count } = await supabase
+    const { data, count, error } = await supabase
       .from('messages')
       .select('*', { count: 'exact' })
       .eq('conversation_id', convId)
       .order('created_at', { ascending: false })
       .limit(PAGE_SIZE)
+
+    if (error) {
+      console.error('[useMessages] load error:', error)
+      setLoading(false)
+      return
+    }
 
     setMessages((data ?? []).reverse())
     setHasMore((count ?? 0) > PAGE_SIZE)
@@ -57,21 +61,27 @@ export function useMessages(conversationId: string | null | undefined) {
     }
   }, [conversationId, messages, supabase])
 
+  // Re-initialize whenever conversationId changes
   useEffect(() => {
-    if (prevConvIdRef.current === conversationId && initializedRef.current) return
-    prevConvIdRef.current = conversationId ?? null
-    initializedRef.current = true
+    setMessages([])
+    setLoading(true)
+    setHasMore(false)
 
-    loadInitial(conversationId ?? null)
-
+    // Clean up previous channel
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current)
+      channelRef.current = null
     }
 
-    if (!conversationId) return
+    if (!conversationId) {
+      setLoading(false)
+      return
+    }
+
+    loadInitial(conversationId)
 
     const channel = supabase
-      .channel(`messages:${conversationId}:${Date.now()}`)
+      .channel(`messages:conv:${conversationId}:${Date.now()}`)
       .on(
         'postgres_changes',
         {
@@ -83,7 +93,7 @@ export function useMessages(conversationId: string | null | undefined) {
         (payload) => {
           const incoming = payload.new as Message
           setMessages(prev => {
-            // Replace optimistic placeholder if content matches
+            // Replace optimistic placeholder
             const optimisticIdx = prev.findIndex(
               m => m.id.startsWith('optimistic-') && m.content === incoming.content
             )
@@ -110,17 +120,19 @@ export function useMessages(conversationId: string | null | undefined) {
           setMessages(prev => prev.map(m => m.id === updated.id ? updated : m))
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.error('[useMessages] realtime channel error for', conversationId)
+        }
+      })
 
     channelRef.current = channel
 
     return () => {
       supabase.removeChannel(channel)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, supabase])
+  }, [conversationId, supabase]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Add an optimistic outbound message immediately (replaced when realtime fires)
   function addOptimisticMessage(content: string, tenantId: string, contactId: string) {
     if (!conversationId) return
     const optimistic: Message = {

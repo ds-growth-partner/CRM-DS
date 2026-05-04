@@ -84,7 +84,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ campa
     setCampaign(campaignData as Campaign | null)
 
     const { data: recipientsData } = await supabase
-      .from('campaign_recipients')
+      .from('campaign_messages')
       .select(`
         id,
         campaign_id,
@@ -94,7 +94,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ campa
         delivered_at,
         read_at,
         error_message,
-        contact:contacts!campaign_recipients_contact_id_fkey(
+        contact:contacts!campaign_messages_contact_id_fkey(
           first_name,
           last_name,
           phone,

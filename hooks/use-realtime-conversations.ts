@@ -26,9 +26,15 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
           contact_tags(tag:tags(*))
         )
       `)
-      .order('last_message_at', { ascending: false })
+      .order('last_message_at', { ascending: false, nullsFirst: false })
 
-    if (error || !convs?.length) {
+    if (error) {
+      console.error('[useRealtimeConversations] query error:', error)
+      setLoading(false)
+      return
+    }
+
+    if (!convs || convs.length === 0) {
       setConversations([])
       setLoading(false)
       return
@@ -90,9 +96,8 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
     }
 
     const channel = supabase
-      .channel('public:conversations')
+      .channel(`conversations-list-${Date.now()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => loadConversations())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => loadConversations())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, () => loadConversations())
       .subscribe()
 

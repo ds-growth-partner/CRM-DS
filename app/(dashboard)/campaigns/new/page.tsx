@@ -704,11 +704,11 @@ export default function NewCampaignPage() {
           tenant_id: tenant.id,
           name: name.trim(),
           description: description.trim() || null,
+          template_id: selectedTemplate.id,
           template_name: selectedTemplate.name,
-          template_language: selectedTemplate.language,
-          template_body: selectedTemplate.body_text,
-          template_variables_count: selectedTemplate.variables_count,
-          variable_mappings: variableMappings.filter(Boolean) as unknown as string[],
+          template_variables: variableMappings.filter(Boolean).length > 0
+            ? variableMappings.filter(Boolean)
+            : null,
           target_count: selectedContactsList.length,
           sent_count: 0,
           delivered_count: 0,
@@ -724,11 +724,12 @@ export default function NewCampaignPage() {
       const recipientsToInsert = selectedContactsList.map(c => ({
         campaign_id: campaignData.id,
         contact_id: c.id,
+        tenant_id: tenant.id,
         status: 'pending',
       }))
 
       const { error: recipientsError } = await supabase
-        .from('campaign_recipients')
+        .from('campaign_messages')
         .insert(recipientsToInsert)
 
       if (recipientsError) throw recipientsError
@@ -756,17 +757,18 @@ export default function NewCampaignPage() {
           tenant_id: tenant.id,
           name: name.trim(),
           description: description.trim() || null,
+          template_id: selectedTemplate.id,
           template_name: selectedTemplate.name,
-          template_language: selectedTemplate.language,
-          template_body: selectedTemplate.body_text,
-          template_variables_count: selectedTemplate.variables_count,
-          variable_mappings: variableMappings.filter(Boolean) as unknown as string[],
+          template_variables: variableMappings.filter(Boolean).length > 0
+            ? variableMappings.filter(Boolean)
+            : null,
           target_count: selectedContactsList.length,
           sent_count: 0,
           delivered_count: 0,
           read_count: 0,
           failed_count: 0,
           status: 'sending',
+          started_at: new Date().toISOString(),
         })
         .select()
         .single()
@@ -776,10 +778,15 @@ export default function NewCampaignPage() {
       const recipientsToInsert = selectedContactsList.map(c => ({
         campaign_id: campaignData.id,
         contact_id: c.id,
+        tenant_id: tenant.id,
         status: 'pending',
       }))
 
-      await supabase.from('campaign_recipients').insert(recipientsToInsert)
+      const { error: recipientsError } = await supabase
+        .from('campaign_messages')
+        .insert(recipientsToInsert)
+
+      if (recipientsError) throw recipientsError
 
       const payload = {
         campaign_id: campaignData.id,
@@ -810,12 +817,15 @@ export default function NewCampaignPage() {
         body: JSON.stringify(payload),
       })
 
-      if (res.ok) {
-        toast.success(`Campaña enviada a ${selectedContactsList.length} contactos`)
-        router.push('/campaigns')
+      const resData = await res.json().catch(() => ({}))
+
+      if (resData.ok === false) {
+        // Campaign saved but n8n had issues — warn and still redirect
+        toast.warning(`Campaña creada pero n8n reportó un error (status ${resData.n8n_status ?? '?'}). Verifica que el workflow esté activo.`)
       } else {
-        toast.error('Error al enviar campaña a n8n')
+        toast.success(`Campaña enviada a ${selectedContactsList.length} contactos`)
       }
+      router.push('/campaigns')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error desconocido'
       toast.error(`Error: ${msg}`)
