@@ -10,6 +10,8 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
   const [conversations, setConversations] = useState<ConversationWithContact[]>([])
   const [loading, setLoading] = useState(true)
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryCountRef = useRef(0)
 
   const loadConversations = useCallback(async () => {
     setLoading(true)
@@ -31,8 +33,14 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
     if (error) {
       console.error('[useRealtimeConversations] query error:', error)
       setLoading(false)
+      // Retry up to 3 times with 1s delay (handles CDN cold-start 300 errors)
+      if (retryCountRef.current < 3) {
+        retryCountRef.current += 1
+        retryTimeoutRef.current = setTimeout(() => loadConversations(), 1000)
+      }
       return
     }
+    retryCountRef.current = 0 // Reset on success
 
     if (!convs || convs.length === 0) {
       setConversations([])
@@ -105,6 +113,11 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
 
     return () => {
       supabase.removeChannel(channel)
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current)
+        retryTimeoutRef.current = null
+      }
+      retryCountRef.current = 0
     }
   }, [loadConversations, supabase])
 

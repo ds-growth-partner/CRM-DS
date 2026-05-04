@@ -23,9 +23,9 @@ export function useMessages(conversationId: string | null | undefined) {
 
     setLoading(true)
 
-    const { data, count, error } = await supabase
+    const { data, error } = await supabase
       .from('messages')
-      .select('*', { count: 'exact' })
+      .select('*')
       .eq('conversation_id', convId)
       .order('created_at', { ascending: false })
       .limit(PAGE_SIZE)
@@ -36,8 +36,10 @@ export function useMessages(conversationId: string | null | undefined) {
       return
     }
 
-    setMessages((data ?? []).reverse())
-    setHasMore((count ?? 0) > PAGE_SIZE)
+    const rows = [...(data ?? [])].reverse() // newest 60, displayed oldest→newest
+    console.log(`[useMessages] loaded ${rows.length} messages for conv ${convId}`)
+    setMessages(rows)
+    setHasMore(rows.length === PAGE_SIZE)
     setLoading(false)
   }, [supabase])
 
@@ -54,7 +56,8 @@ export function useMessages(conversationId: string | null | undefined) {
       .limit(PAGE_SIZE)
 
     if (data && data.length > 0) {
-      setMessages(prev => [...data.reverse(), ...prev])
+      const older = [...data].reverse()
+      setMessages(prev => [...older, ...prev])
       setHasMore(data.length === PAGE_SIZE)
     } else {
       setHasMore(false)

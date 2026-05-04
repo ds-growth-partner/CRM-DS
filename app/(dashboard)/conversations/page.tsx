@@ -65,6 +65,7 @@ export default function ConversationsPage() {
       )}>
         {selectedConversation ? (
           <ChatView
+            key={selectedConversation.id}
             conversation={selectedConversation}
             onBack={() => setMobilePanel('list')}
             onShowContact={() => setMobilePanel('contact')}
