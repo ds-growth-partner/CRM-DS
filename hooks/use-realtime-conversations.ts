@@ -22,7 +22,7 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
       .select(`
         *,
         assigned_agent:users!conversations_assigned_agent_id_fkey(id, full_name, avatar_url, role),
-        contact:contacts!inner(
+        contact:contacts!contact_id(
           *,
           funnel_stage:funnel_stages(*),
           contact_tags(tag:tags(*))
@@ -50,10 +50,11 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
 
     let result: ConversationWithContact[] = convs.map(c => {
       // Map contact.contact_tags to just tags for frontend ease
-      const contact = {
-        ...(c.contact as any),
-        tags: (c.contact as any).contact_tags?.map((ct: any) => ct.tag) ?? [],
-      }
+      const contactData = c.contact as any
+      const contact = contactData ? {
+        ...contactData,
+        tags: contactData.contact_tags?.map((ct: any) => ct.tag) ?? [],
+      } : null
       
       return {
         ...c,
@@ -65,8 +66,10 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
     if (filters.search) {
       const q = filters.search.toLowerCase()
       result = result.filter(c => {
-        const name = `${c.contact.first_name} ${c.contact.last_name ?? ''}`.toLowerCase()
-        return name.includes(q) || (c.contact.phone ?? '').includes(q)
+        if (!c.contact) return false
+        const contact = c.contact as any
+        const name = `${contact.first_name} ${contact.last_name ?? ''}`.toLowerCase()
+        return name.includes(q) || (contact.phone ?? '').includes(q)
       })
     }
 
@@ -83,12 +86,12 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
     }
 
     if (filters.funnel_stage_id) {
-      result = result.filter(c => c.contact.funnel_stage_id === filters.funnel_stage_id)
+      result = result.filter(c => c.contact?.funnel_stage_id === filters.funnel_stage_id)
     }
 
     if (filters.tag_id) {
       result = result.filter(c =>
-        (c.contact.tags ?? []).some((t: any) => t.id === filters.tag_id)
+        (c.contact?.tags ?? []).some((t: any) => t.id === filters.tag_id)
       )
     }
 
@@ -107,6 +110,7 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
       .channel(`conversations-list-${Date.now()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => loadConversations())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, () => loadConversations())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => loadConversations())
       .subscribe()
 
     channelRef.current = channel

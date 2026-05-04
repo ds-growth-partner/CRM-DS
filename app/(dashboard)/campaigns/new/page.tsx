@@ -41,18 +41,25 @@ const FIELD_OPTIONS = [
   { key: 'city', label: 'Ciudad' },
 ]
 
-function scanTemplateVariables(body: string): { num: number; placeholder: string }[] {
-  const matches = body.match(/\{\{(\d+)\}\}/g) ?? []
-  const seen = new Set<number>()
-  const result: { num: number; placeholder: string }[] = []
+function scanTemplateVariables(body: string): { key: string; placeholder: string }[] {
+  const matches = body.match(/\{\{(.+?)\}\}/g) ?? []
+  const seen = new Set<string>()
+  const result: { key: string; placeholder: string }[] = []
   for (const m of matches) {
-    const num = parseInt(m.replace(/\D/g, ''))
-    if (!seen.has(num)) {
-      seen.add(num)
-      result.push({ num, placeholder: m })
+    const key = m.replace(/\{\{|\}\}/g, '').trim()
+    if (!seen.has(key)) {
+      seen.add(key)
+      result.push({ key, placeholder: m })
     }
   }
-  return result.sort((a, b) => a.num - b.num)
+
+  // Si todas las keys son números, ordenamos numéricamente (formato estándar Meta)
+  const allNumeric = result.every(v => /^\d+$/.test(v.key))
+  if (allNumeric) {
+    return result.sort((a, b) => parseInt(a.key) - parseInt(b.key))
+  }
+
+  return result
 }
 
 function VariableMapping({
@@ -60,7 +67,7 @@ function VariableMapping({
   mappings,
   onChange,
 }: {
-  variables: { num: number; placeholder: string }[]
+  variables: { key: string; placeholder: string }[]
   mappings: string[]
   onChange: (index: number, value: string) => void
 }) {
@@ -79,18 +86,18 @@ function VariableMapping({
       {/* Variable previews from body */}
       <div className="bg-background/60 rounded-lg p-3 text-xs text-muted-foreground leading-relaxed border border-border">
         {variables.map((v) => (
-          <span key={v.num} className="bg-primary/10 text-primary border border-primary/20 rounded px-1 mx-0.5 font-mono">
-            {`{{${v.num}}}`}
+          <span key={v.key} className="bg-primary/10 text-primary border border-primary/20 rounded px-1 mx-0.5 font-mono">
+            {v.placeholder}
           </span>
         ))}
       </div>
 
       <div className="space-y-2">
         {variables.map((v, i) => (
-          <div key={v.num} className="flex items-center gap-3">
+          <div key={v.key} className="flex items-center gap-3">
             <div className="w-24 shrink-0">
               <span className="text-xs font-mono text-primary bg-primary/10 border border-primary/20 rounded px-1.5 py-0.5">
-                {`{{${v.num}}}`}
+                {v.placeholder}
               </span>
             </div>
             <div className="flex-1">
@@ -565,8 +572,8 @@ function StepConfirm({
           <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Mapeo de variables</h3>
           <div className="flex flex-wrap gap-2">
             {templateVars.map((v, i) => (
-              <span key={v.num} className="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-2.5 py-1 font-mono">
-                {`{{${v.num}}}`} → {variableMappings[i] ? FIELD_OPTIONS.find(f => f.key === variableMappings[i])?.label ?? variableMappings[i] : '—'}
+              <span key={v.key} className="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-2.5 py-1 font-mono">
+                {v.placeholder} → {variableMappings[i] ? FIELD_OPTIONS.find(f => f.key === variableMappings[i])?.label ?? variableMappings[i] : '—'}
               </span>
             ))}
           </div>

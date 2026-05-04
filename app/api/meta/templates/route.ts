@@ -34,7 +34,12 @@ export async function GET() {
     body_text: (t.components as { type: string; text: string }[])?.find(c => c.type === 'BODY')?.text ?? '',
     header_text: (t.components as { type: string; text: string }[])?.find(c => c.type === 'HEADER')?.text,
     footer_text: (t.components as { type: string; text: string }[])?.find(c => c.type === 'FOOTER')?.text,
-    variables_count: ((t.components as { text: string }[])?.map(c => c.text ?? '').join(' ').match(/\{\{[0-9]+\}\}/g) ?? []).length,
+    variables_count: (new Set(
+      (t.components as { text: string }[])
+        ?.map(c => c.text ?? '')
+        .join(' ')
+        .match(/\{\{(.+?)\}\}/g) ?? []
+    )).size,
     last_synced_at: new Date().toISOString(),
   }))
 
