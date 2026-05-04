@@ -170,6 +170,30 @@ export type Database = {
         Insert: Omit<Database['public']['Tables']['n8n_chat_histories']['Row'], 'id'>
         Update: Partial<Database['public']['Tables']['n8n_chat_histories']['Insert']>
       }
+      messages: {
+        Row: {
+          id: string
+          tenant_id: string
+          conversation_id: string
+          contact_id: string
+          content: string | null
+          content_type: 'text' | 'image' | 'audio' | 'video' | 'document' | 'sticker' | 'location' | 'template' | 'reaction'
+          direction: 'inbound' | 'outbound'
+          sender_type: 'contact' | 'agent' | 'bot' | 'system'
+          sender_id: string | null
+          media_url: string | null
+          media_mime_type: string | null
+          media_filename: string | null
+          media_size_bytes: number | null
+          wa_message_id: string | null
+          delivery_status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
+          error_message: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['messages']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['messages']['Insert']>
+      }
 
       ai_actions: {
         Row: {
@@ -404,6 +428,7 @@ export type ContactNote = Tables<'contact_notes'>
 export type CannedResponse = Tables<'canned_responses'>
 export type CustomFieldDefinition = Tables<'custom_field_definitions'>
 export type N8nChatHistory = Tables<'n8n_chat_histories'>
+export type Message = Tables<'messages'>
 
 // Extended types with joins
 export type ContactWithDetails = Contact & {

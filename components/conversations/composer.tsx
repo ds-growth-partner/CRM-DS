@@ -164,31 +164,145 @@ export function Composer({
     setText('')
     setAttachments([])
 
-    const n8nSessionId = waId ?? null
-
     try {
       const now = new Date().toISOString()
 
-      // File attachments → n8n_chat_histories + manual conversation update
+      // Get tenant_id from conversation
+      const { data: convData } = await supabase
+        .from('conversations').select('tenant_id').eq('id', conversationId).single()
+      if (!convData) throw new Error('Conversación no encontrada')
+      const tenantId = convData.tenant_id
+
+      // ── Text message ────────────────────────────────────────────────────
+      if (hasText) {
+        // Insert into messages table
+        const { error } = await supabase.from('messages').insert({
+          tenant_id: tenantId,
+          conversation_id: conversationId,
+          contact_id: contactId,
+          content: resolved,
+          content_type: 'text',
+          direction: 'outbound',
+          sender_type: 'agent',
+          delivery_status: 'pending',
+        })
+        if (error) throw error
+
+        // Update conversation preview
+        await supabase.from('conversations').update({
+          last_message_preview: resolved.slice(0, 100),
+          last_message_at: now,
+          last_message_direction: 'outbound',
+          unread_count: 0,
+          updated_at: now,
+        }).eq('id', conversationId)
+
+        // Also write to n8n_chat_histories so the AI agent keeps context
+        if (waId) {
+          await supabase.from('n8n_chat_histories').insert({
+            session_id: waId,
+            message: {
+              type: 'ai',
+              content: resolved,
+              tool_calls: [],
+              additional_kwargs: { sender: 'agent' },
+              response_metadata: {},
+            },
+            time_stamp: now,
+          }).then(() => {}) // fire-and-forget, don't block
+          
+          // Call n8n webhook for TEXT
+          try {
+            await fetch('/api/webhooks/n8n/send-message', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                wa_id: waId,
+                message_type: 'text',
+                message: resolved,
+                contact: contact ? {
+                  id: contact.id,
+                  first_name: contact.first_name,
+                  last_name: contact.last_name,
+                  phone: contact.phone,
+                  email: contact.email,
+                  wa_id: contact.wa_id,
+                  company: contact.company,
+                  custom_fields: contact.custom_fields,
+                } : null,
+                conversation_id: conversationId,
+              }),
+            })
+          } catch {
+            console.error('n8n webhook failed for text')
+          }
+        }
+      }
+
+      // ── File attachments ────────────────────────────────────────────────
       if (hasFiles) {
         setUploading(true)
         for (const { file } of attachments) {
           const mediaUrl = await uploadFile(file)
           if (!mediaUrl) continue
 
-          if (n8nSessionId) {
-            // Store file message in n8n format
+          const ct = getContentType(file)
+          await supabase.from('messages').insert({
+            tenant_id: tenantId,
+            conversation_id: conversationId,
+            contact_id: contactId,
+            content: null,
+            content_type: ct,
+            direction: 'outbound',
+            sender_type: 'agent',
+            media_url: mediaUrl,
+            media_filename: file.name,
+            media_mime_type: file.type,
+            delivery_status: 'pending',
+          })
+
+          if (waId) {
+            // Also write to n8n_chat_histories
             await supabase.from('n8n_chat_histories').insert({
-              session_id: n8nSessionId,
+              session_id: waId,
               message: {
                 type: 'ai',
-                content: `[${getContentType(file)}] ${file.name}\n${mediaUrl}`,
+                content: `[${ct}] ${file.name}\n${mediaUrl}`,
                 tool_calls: [],
                 additional_kwargs: { sender: 'agent' },
                 response_metadata: {},
               },
               time_stamp: now,
-            })
+            }).then(() => {}) // fire-and-forget
+
+            // Call n8n webhook for FILE
+            try {
+              await fetch('/api/webhooks/n8n/send-message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  wa_id: waId,
+                  message_type: ct, // 'image', 'audio', 'video', 'document'
+                  media_url: mediaUrl,
+                  media_filename: file.name,
+                  media_mime_type: file.type,
+                  message: `[${ct}] ${file.name}`, // Fallback text
+                  contact: contact ? {
+                    id: contact.id,
+                    first_name: contact.first_name,
+                    last_name: contact.last_name,
+                    phone: contact.phone,
+                    email: contact.email,
+                    wa_id: contact.wa_id,
+                    company: contact.company,
+                    custom_fields: contact.custom_fields,
+                  } : null,
+                  conversation_id: conversationId,
+                }),
+              })
+            } catch {
+              console.error('n8n webhook failed for file')
+            }
           }
         }
         setUploading(false)
@@ -202,72 +316,11 @@ export function Composer({
         }).eq('id', conversationId)
       }
 
-      // Text message
-      if (hasText) {
-        // Always update conversation metadata first
-        const { data: convData } = await supabase
-          .from('conversations').select('tenant_id').eq('id', conversationId).single()
-        if (!convData) throw new Error('Conversación no encontrada')
-
-        await supabase.from('conversations').update({
-          last_message_preview: resolved.slice(0, 100),
-          last_message_at: now,
-          last_message_direction: 'outbound',
-          unread_count: 0,
-          updated_at: now,
-        }).eq('id', conversationId)
-
-        // Write to n8n_chat_histories if contact has a valid session ID
-        if (n8nSessionId) {
-          const { error } = await supabase.from('n8n_chat_histories').insert({
-            session_id: n8nSessionId,
-            message: {
-              type: 'ai',
-              content: resolved,
-              tool_calls: [],
-              additional_kwargs: { sender: 'agent' },
-              response_metadata: {},
-            },
-            time_stamp: now,
-          })
-          if (error) throw error
-        }
-      }
-
-      // Always update contact's last_contacted_at
+      // ── Update contact last_contacted_at ────────────────────────────────
       await supabase.from('contacts').update({
         last_contacted_at: now,
         updated_at: now,
       }).eq('id', contactId)
-
-      // Call n8n webhook to send via WhatsApp API
-      if (n8nSessionId && (hasText || hasFiles)) {
-        try {
-          const webhookPayload = {
-            wa_id: n8nSessionId,
-            message: resolved || `[${getContentType(attachments[0]?.file ?? { type: '' } as File)}] ${attachments[0]?.file.name}`,
-            media_url: attachments.length > 0 ? await uploadFile(attachments[0].file) : undefined,
-            contact: contact ? {
-              id: contact.id,
-              first_name: contact.first_name,
-              last_name: contact.last_name,
-              phone: contact.phone,
-              email: contact.email,
-              wa_id: contact.wa_id,
-              company: contact.company,
-              custom_fields: contact.custom_fields,
-            } : null,
-            conversation_id: conversationId,
-          }
-          await fetch('/api/webhooks/n8n/send-message', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(webhookPayload),
-          })
-        } catch {
-          console.error('n8n webhook failed')
-        }
-      }
 
       onMessageSent?.()
     } catch {

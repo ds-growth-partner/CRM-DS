@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { ConversationList } from '@/components/conversations/conversation-list'
 import { ChatView } from '@/components/conversations/chat-view'
 import { ContactPanel } from '@/components/conversations/contact-panel'
 import { useRealtimeConversations } from '@/hooks/use-realtime-conversations'
+import { useSupabase } from '@/providers/supabase-provider'
 import { MessageSquare } from 'lucide-react'
 import { EmptyState } from '@/components/shared/empty-state'
 import type { ConversationFilters } from '@/lib/types/shared'
@@ -17,13 +18,23 @@ export default function ConversationsPage() {
   const [filters, setFilters] = useState<ConversationFilters>({})
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>('list')
   const { conversations, loading } = useRealtimeConversations(filters)
+  const { supabase } = useSupabase()
 
   const selectedConversation = conversations.find(c => c.id === selectedId) ?? null
 
-  function handleSelect(id: string) {
+  const handleSelect = useCallback(async (id: string) => {
     setSelectedId(id)
     setMobilePanel('chat')
-  }
+
+    // Mark conversation as read if it has unread messages
+    const conv = conversations.find(c => c.id === id)
+    if (conv && conv.unread_count > 0) {
+      await supabase
+        .from('conversations')
+        .update({ unread_count: 0, updated_at: new Date().toISOString() })
+        .eq('id', id)
+    }
+  }, [conversations, supabase])
 
   return (
     <div className="flex h-full overflow-hidden">

@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useN8nMessages } from '@/hooks/use-n8n-messages'
+import { useMessages } from '@/hooks/use-messages'
 import { useRealtimeContact } from '@/hooks/use-realtime-contact'
-import { N8nMessageBubble } from './n8n-message-bubble'
+import { MessageBubble } from './message-bubble'
 import { Composer } from './composer'
 import { WindowIndicator } from './window-indicator'
 import { TakeControlButton } from './take-control-button'
@@ -26,9 +26,7 @@ interface ChatViewProps {
 
 export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps) {
   const contact = conversation.contact
-  const waId = contact.wa_id ?? null
-  // n8n_chat_histories is the single source of truth for messages
-  const { messages: n8nMessages, loading, addOptimisticMessage: addN8nOptimistic } = useN8nMessages(waId)
+  const { messages, loading, addOptimisticMessage } = useMessages(conversation.id)
   const { contact: liveContact } = useRealtimeContact(contact.id)
   const bottomRef = useRef<HTMLDivElement>(null)
   const [aiActive, setAiActive] = useState(conversation.ai_active)
@@ -45,7 +43,7 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [n8nMessages.length])
+  }, [messages.length])
 
   async function loadAgents() {
     if (!tenant) return
@@ -71,17 +69,17 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
     toast.success(agent ? `Asignado a ${agent.full_name}` : 'Asesor removido')
   }
 
-  // Group n8n messages by date
-  type N8nGrouped = { date: string; entries: typeof n8nMessages }
-  const n8nGrouped: N8nGrouped[] = []
-  let n8nCurrentDate = ''
-  for (const entry of n8nMessages) {
-    const d = formatDate(entry.time_stamp)
-    if (d !== n8nCurrentDate) {
-      n8nCurrentDate = d
-      n8nGrouped.push({ date: d, entries: [entry] })
+  // Group messages by date
+  type Grouped = { date: string; entries: typeof messages }
+  const grouped: Grouped[] = []
+  let currentDate = ''
+  for (const msg of messages) {
+    const d = formatDate(msg.created_at)
+    if (d !== currentDate) {
+      currentDate = d
+      grouped.push({ date: d, entries: [msg] })
     } else {
-      n8nGrouped[n8nGrouped.length - 1].entries.push(entry)
+      grouped[grouped.length - 1].entries.push(msg)
     }
   }
 
@@ -208,26 +206,25 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
             ))}
           </div>
         ) : (
-          /* ── n8n conversation history ── */
           <>
-            {n8nGrouped.length === 0 && (
+            {grouped.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full pt-16 text-center px-8">
                 <Bot className="h-10 w-10 text-muted-foreground/30 mb-3" />
                 <p className="text-sm text-muted-foreground">Sin mensajes aún</p>
                 <p className="text-xs text-muted-foreground/60 mt-1">
-                  {waId ? 'Los mensajes de WhatsApp aparecerán aquí' : 'Este contacto no tiene WhatsApp vinculado'}
+                  Los mensajes de WhatsApp aparecerán aquí en tiempo real
                 </p>
               </div>
             )}
-            {n8nGrouped.map(({ date, entries }) => (
+            {grouped.map(({ date, entries }) => (
               <div key={date}>
                 <div className="flex items-center justify-center my-4">
                   <span className="text-[10px] text-muted-foreground bg-muted/70 border border-border/50 px-3 py-0.5 rounded-full backdrop-blur-sm">
                     {date}
                   </span>
                 </div>
-                {entries.map(entry => (
-                  <N8nMessageBubble key={entry.id} entry={entry} />
+                {entries.map(msg => (
+                  <MessageBubble key={msg.id} message={msg} />
                 ))}
               </div>
             ))}
@@ -242,7 +239,9 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
         waId={contact.wa_id ?? null}
         lastIncomingAt={contact.last_incoming_at}
         contact={liveContact ?? contact}
-        onOptimisticMessage={(content) => addN8nOptimistic(content)}
+        onOptimisticMessage={(content) => {
+          if (tenant) addOptimisticMessage(content, tenant.id, contact.id)
+        }}
       />
     </div>
   )
