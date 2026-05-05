@@ -47,14 +47,17 @@ interface RecipientRow {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapRecipient(r: any): RecipientRow {
+  // Manejar si contact viene como objeto o array (por el alias en la query)
+  const contact = Array.isArray(r.contact) ? r.contact[0] : r.contact
+
   return {
     id: r.id,
     contact_id: r.contact_id,
-    contact_name: Array.isArray(r.contact)
-      ? `${r.contact[0]?.first_name ?? ''} ${r.contact[0]?.last_name ?? ''}`.trim()
+    contact_name: contact 
+      ? `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim() || 'Sin nombre'
       : 'Sin nombre',
-    contact_phone: r.contact?.[0]?.phone ?? null,
-    contact_wa_id: r.contact?.[0]?.wa_id ?? null,
+    contact_phone: contact?.phone ?? null,
+    contact_wa_id: contact?.wa_id ?? null,
     status: r.status ?? 'pending',
     sent_at: r.sent_at ?? null,
     delivered_at: r.delivered_at ?? null,
