@@ -175,20 +175,7 @@ export function Composer({
 
       // ── Text message ────────────────────────────────────────────────────
       if (hasText) {
-        // Insert into messages table
-        const { error } = await supabase.from('messages').insert({
-          tenant_id: tenantId,
-          conversation_id: conversationId,
-          contact_id: contactId,
-          content: resolved,
-          content_type: 'text',
-          direction: 'outbound',
-          sender_type: 'agent',
-          delivery_status: 'pending',
-        })
-        if (error) throw error
-
-        // Update conversation preview
+        // Update conversation preview locally
         await supabase.from('conversations').update({
           last_message_preview: resolved.slice(0, 100),
           last_message_at: now,
@@ -197,15 +184,61 @@ export function Composer({
           updated_at: now,
         }).eq('id', conversationId)
 
+        // Send to n8n — n8n sends via WhatsApp API and writes to messages table
         if (waId) {
-          try {
+          await fetch('/api/webhooks/n8n/send-message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              wa_id: waId,
+              message_type: 'text',
+              message: resolved,
+              contact: contact ? {
+                id: contact.id,
+                first_name: contact.first_name,
+                last_name: contact.last_name,
+                phone: contact.phone,
+                email: contact.email,
+                wa_id: contact.wa_id,
+                company: contact.company,
+                custom_fields: contact.custom_fields,
+              } : null,
+              conversation_id: conversationId,
+            }),
+          })
+        }
+      }
+
+      // ── File attachments ────────────────────────────────────────────────
+      if (hasFiles) {
+        setUploading(true)
+        for (const { file } of attachments) {
+          const mediaUrl = await uploadFile(file)
+          if (!mediaUrl) continue
+
+          const ct = getContentType(file)
+
+          // Update conversation preview locally
+          await supabase.from('conversations').update({
+            last_message_preview: `[${ct}] ${file.name}`,
+            last_message_at: now,
+            last_message_direction: 'outbound',
+            unread_count: 0,
+            updated_at: now,
+          }).eq('id', conversationId)
+
+          // Send to n8n — n8n sends via WhatsApp API and writes to messages table
+          if (waId) {
             await fetch('/api/webhooks/n8n/send-message', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 wa_id: waId,
-                message_type: 'text',
-                message: resolved,
+                message_type: ct,
+                media_url: mediaUrl,
+                media_filename: file.name,
+                media_mime_type: file.type,
+                message: `[${ct}] ${file.name}`,
                 contact: contact ? {
                   id: contact.id,
                   first_name: contact.first_name,
@@ -219,74 +252,9 @@ export function Composer({
                 conversation_id: conversationId,
               }),
             })
-          } catch {
-            console.error('n8n webhook failed for text')
-          }
-        }
-      }
-
-      // ── File attachments ────────────────────────────────────────────────
-      if (hasFiles) {
-        setUploading(true)
-        for (const { file } of attachments) {
-          const mediaUrl = await uploadFile(file)
-          if (!mediaUrl) continue
-
-          const ct = getContentType(file)
-          await supabase.from('messages').insert({
-            tenant_id: tenantId,
-            conversation_id: conversationId,
-            contact_id: contactId,
-            content: null,
-            content_type: ct,
-            direction: 'outbound',
-            sender_type: 'agent',
-            media_url: mediaUrl,
-            media_filename: file.name,
-            media_mime_type: file.type,
-            delivery_status: 'pending',
-          })
-
-          if (waId) {
-            // Call n8n webhook for FILE
-            try {
-              await fetch('/api/webhooks/n8n/send-message', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  wa_id: waId,
-                  message_type: ct, // 'image', 'audio', 'video', 'document'
-                  media_url: mediaUrl,
-                  media_filename: file.name,
-                  media_mime_type: file.type,
-                  message: `[${ct}] ${file.name}`, // Fallback text
-                  contact: contact ? {
-                    id: contact.id,
-                    first_name: contact.first_name,
-                    last_name: contact.last_name,
-                    phone: contact.phone,
-                    email: contact.email,
-                    wa_id: contact.wa_id,
-                    company: contact.company,
-                    custom_fields: contact.custom_fields,
-                  } : null,
-                  conversation_id: conversationId,
-                }),
-              })
-            } catch {
-              console.error('n8n webhook failed for file')
-            }
           }
         }
         setUploading(false)
-
-        await supabase.from('conversations').update({
-          last_message_preview: attachments[0]?.file.name ?? '[archivo]',
-          last_message_at: now,
-          last_message_direction: 'outbound',
-          unread_count: 0,
-          updated_at: now,
-        }).eq('id', conversationId)
       }
 
       // ── Update contact last_contacted_at ────────────────────────────────
