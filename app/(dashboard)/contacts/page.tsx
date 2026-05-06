@@ -8,7 +8,6 @@ import { ImportContactsDialog } from '@/components/contacts/import-contacts-dial
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useSupabase } from '@/providers/supabase-provider'
-import type { FunnelStage } from '@/lib/types/database'
 import { LayoutGrid, Table2, Search, Download, Upload, Plus } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDebounce } from '@/hooks/use-debounce'
