@@ -65,9 +65,10 @@ export function useContacts(filters: ContactFilters = {}) {
       console.error('Error fetching contacts:', error)
     }
 
-    const mapped = (data ?? []).map(c => ({
+    const rows = (data ?? []) as unknown as Record<string, unknown>[]
+    const mapped = rows.map(c => ({
       ...c,
-      tags: (c.contact_tags as unknown as { tag: typeof c }[])?.map(ct => ct.tag) ?? [],
+      tags: (c.contact_tags as { tag: unknown }[] | undefined)?.map(ct => ct.tag) ?? [],
     }))
 
     setContacts(mapped as unknown as ContactWithDetails[])

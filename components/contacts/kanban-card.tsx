@@ -6,10 +6,10 @@ import { TagBadge } from '@/components/shared/tag-badge'
 import { LeadScoreBar } from '@/components/shared/lead-score-bar'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
-import { Building2, Phone } from 'lucide-react'
+import { Building2, Phone, CheckSquare, Square } from 'lucide-react'
 
 interface KanbanCardProps {
-  contact: ContactWithTags
+  contact: ContactWithDetails
   /** Rendered inside DragOverlay — elevated, rotated, no drag events needed */
   isOverlay?: boolean
   /** Ghost preview in destination column while dragging */
