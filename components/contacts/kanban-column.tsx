@@ -15,9 +15,11 @@ interface KanbanColumnProps {
   activeContact?: ContactWithTags | null
   /** Whether the drag pointer is currently over this column */
   isOver?: boolean
+  selectedIds?: Set<string>
+  onToggle?: (id: string) => void
 }
 
-export function KanbanColumn({ stage, contacts, activeContact, isOver }: KanbanColumnProps) {
+export function KanbanColumn({ stage, contacts, activeContact, isOver, selectedIds, onToggle }: KanbanColumnProps) {
   const { setNodeRef } = useDroppable({ id: stage.id })
 
   // Is the dragged card currently FROM this column?
@@ -63,7 +65,12 @@ export function KanbanColumn({ stage, contacts, activeContact, isOver }: KanbanC
         <ScrollArea className="h-full max-h-[calc(100vh-280px)]">
           <div className="p-2 space-y-2">
             {contacts.map(contact => (
-              <KanbanCard key={contact.id} contact={contact} />
+              <KanbanCard
+                key={contact.id}
+                contact={contact}
+                isSelected={selectedIds?.has(contact.id)}
+                onToggle={onToggle}
+              />
             ))}
 
             {/* Ghost card: preview of the dragged card in this destination column */}

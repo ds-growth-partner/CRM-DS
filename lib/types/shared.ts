@@ -22,6 +22,7 @@ export type ConversationFilters = {
 export type ContactFilters = {
   funnel_stage_id?: string
   tag_id?: string
+  tag_ids?: string[]
   lead_score_min?: number
   lead_score_max?: number
   source?: string
@@ -29,6 +30,8 @@ export type ContactFilters = {
   ai_active?: boolean
   created_from?: string
   created_to?: string
+  phone?: string
+  email?: string
   search?: string
 }
 

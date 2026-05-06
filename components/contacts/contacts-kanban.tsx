@@ -24,6 +24,8 @@ interface ContactsKanbanProps {
   contacts: ContactWithTags[]
   stages: FunnelStage[]
   onStageChange?: (contactId: string, newStageId: string) => void
+  selectedIds?: Set<string>
+  onToggle?: (id: string) => void
 }
 
 const NO_STAGE_ID = 'no-stage'
@@ -41,7 +43,7 @@ const NO_STAGE: FunnelStage = {
   created_at: '',
 }
 
-export function ContactsKanban({ contacts, stages, onStageChange }: ContactsKanbanProps) {
+export function ContactsKanban({ contacts, stages, onStageChange, selectedIds, onToggle }: ContactsKanbanProps) {
   const { supabase } = useSupabase()
   const [localContacts, setLocalContacts] = useState(contacts)
   const [activeContact, setActiveContact] = useState<ContactWithTags | null>(null)
@@ -138,6 +140,8 @@ export function ContactsKanban({ contacts, stages, onStageChange }: ContactsKanb
               contacts={columnContacts}
               activeContact={activeContact}
               isOver={overColumnId === stage.id}
+              selectedIds={selectedIds}
+              onToggle={onToggle}
             />
           )
         })}
