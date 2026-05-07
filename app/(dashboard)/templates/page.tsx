@@ -45,10 +45,16 @@ export default function TemplatesPage() {
   async function handleSync() {
     setSyncing(true)
     try {
-      const res = await fetch('/api/meta/templates')
+      const res = await fetch('https://tu-contador-n8n.qr3bct.easypanel.host/webhook/sync-meta-template', {
+        method: 'POST',
+      })
       if (res.ok) {
+        // Esperar un momento para que n8n termine de escribir en Supabase
+        await new Promise(r => setTimeout(r, 2000))
         await loadTemplates()
         toast.success('Plantillas sincronizadas con Meta')
+      } else {
+        toast.error('Error al sincronizar plantillas')
       }
     } catch {
       toast.error('Error al sincronizar plantillas')
