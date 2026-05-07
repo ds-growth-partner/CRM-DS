@@ -132,7 +132,7 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
 
         {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
-          <WindowIndicator lastIncomingAt={contact.last_incoming_at} />
+          <WindowIndicator lastIncomingAt={liveContact?.last_incoming_at ?? contact.last_incoming_at} />
 
           {/* Assign agent dropdown */}
           <div className="relative">
@@ -237,7 +237,7 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
         conversationId={conversation.id}
         contactId={contact.id}
         waId={contact.wa_id ?? null}
-        lastIncomingAt={contact.last_incoming_at}
+        lastIncomingAt={liveContact?.last_incoming_at ?? contact.last_incoming_at}
         contact={liveContact ?? contact}
         onOptimisticMessage={(content) => {
           if (tenant) addOptimisticMessage(content, tenant.id, contact.id)
