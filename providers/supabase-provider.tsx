@@ -1,6 +1,7 @@
 'use client'
 
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useMemo } from 'react'
+import { useAuth } from '@clerk/nextjs'
 import { createClient } from '@/lib/supabase/client'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -12,7 +13,12 @@ type SupabaseContext = {
 const Context = createContext<SupabaseContext | undefined>(undefined)
 
 export function SupabaseProvider({ children }: { children: React.ReactNode }) {
-  const [supabase] = useState(() => createClient())
+  const { getToken } = useAuth()
+
+  const supabase = useMemo(
+    () => createClient(() => getToken({ template: 'supabase' })),
+    [getToken]
+  )
 
   return <Context.Provider value={{ supabase }}>{children}</Context.Provider>
 }

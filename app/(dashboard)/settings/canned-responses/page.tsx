@@ -209,7 +209,7 @@ export default function CannedResponsesPage() {
             <textarea
               value={newContent}
               onChange={e => setNewContent(e.target.value)}
-              placeholder={`Hola {{first_name}}, soy asesor de TuContador. ¿En qué te puedo ayudar hoy? 😊`}
+              placeholder={`Hola {{first_name}}, soy asesor del equipo. ¿En qué te puedo ayudar hoy? 😊`}
               rows={4}
               required
               className="w-full rounded-lg border border-border bg-background text-sm p-3 text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"

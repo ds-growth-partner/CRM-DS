@@ -1,14 +1,14 @@
-# TuContador CRM - Product Requirements Document
+# DS CRM — Product Requirements Document
 
 ## 1. Overview
 
-**TuContador-CRM** es una plataforma CRM multi-tenant basada en WhatsApp para firmas contables colombianas. Combina automatización conversacional con IA, gestión de leads y analytics en tiempo real.
+**DS CRM** es una plataforma CRM SaaS multi-tenant basada en WhatsApp. Permite a cualquier empresa registrarse, crear su organización y gestionar su mensajería, leads y automatizaciones con IA.
 
-- **Nombre del producto:** TuContador CRM
+- **Nombre del producto:** DS CRM
 - **Tipo:** SaaS multi-tenant (B2B)
-- **Mercado objetivo:** Firmas contables en Colombia
-- **Stack principal:** Next.js 16 (App Router) + Supabase (PostgreSQL) + n8n (automatizaciones)
-- **Canal principal:** WhatsApp Business API (Meta)
+- **Mercado objetivo:** Empresas que usan WhatsApp Business como canal principal de ventas/atención
+- **Stack principal:** Next.js 16 (App Router) + Supabase (PostgreSQL) + Clerk (Auth) + n8n (automatizaciones por tenant) + Resend (emails)
+- **Repositorio:** git@github-dsgp:ds-growth-partner/CRM-DS.git
 
 ---
 
@@ -33,240 +33,136 @@
 | papaparse | 5.5.3 | Parsing CSV |
 | next-themes | 0.4.6 | Theme switching |
 
-### Backend / Database
+### Auth & Backend
 | Tecnología | Uso |
 |------------|-----|
+| Clerk | Autenticación, registro, organizaciones, invitaciones |
 | PostgreSQL (Supabase) | Base de datos relacional |
-| Supabase Auth | Authentication (magic link/email OTP) |
 | Supabase Realtime | Suscripciones en tiempo real |
-| Supabase Vault | Encriptación de credenciales |
+| Resend | Emails transaccionales |
 
 ### Integraciones
 | Servicio | Propósito |
 |----------|-----------|
-| Meta WhatsApp Business API | Mensajería WhatsApp |
-| n8n | Workflow automation + AI agent |
+| Meta WhatsApp Business API | Mensajería WhatsApp (por tenant) |
+| n8n | Workflow automation + AI agent (instancia independiente por tenant) |
 | Google Calendar API | Sync de citas |
 
 ---
 
-## 3. Database Schema (19 tablas)
+## 3. Arquitectura de Auth (Clerk + Supabase)
 
-### Tablas principales
+### Flujo
+1. Usuario se registra en `/sign-up` → Clerk crea el usuario
+2. Clerk webhook (`/api/webhooks/clerk`) sincroniza a Supabase (`users` table)
+3. Usuario crea organización en `/onboarding` → Clerk crea la org
+4. Clerk webhook sincroniza org a Supabase (`tenants` table) y vincula el user
+5. En el dashboard, `SupabaseProvider` inyecta el JWT de Clerk (`template: 'supabase'`) en cada request
+6. Supabase RLS valida el JWT usando las funciones helper
 
-#### `tenants`
-Organizaciones/clientes principales.
-```sql
-- id (UUID, PK)
-- name (TEXT)              -- "Contabilidad López S.A."
-- slug (TEXT, UNIQUE)      -- "contabilidad-lopez"
-- logo_url (TEXT)
-- plan (TEXT)              -- 'starter' | 'professional' | 'enterprise'
-- is_active (BOOLEAN)
-- max_agents (INTEGER)     -- Límite de usuarios
-- max_contacts (INTEGER)   -- Límite de contactos
-- created_at, updated_at
+### JWT Template de Clerk (nombre: `supabase`)
+```json
+{
+  "sub": "{{user.id}}",
+  "role": "authenticated",
+  "org_id": "{{org.id}}",
+  "org_role": "{{org.role}}",
+  "org_slug": "{{org.slug}}"
+}
 ```
+- **Algorithm:** HS256
+- **Signing key:** JWT Secret del proyecto Supabase
 
-#### `tenant_credentials`
-Credenciales encriptadas por tenant (Vault).
-```sql
-- id (UUID, PK)
-- tenant_id (UUID, FK)
-- waba_id (TEXT)                           -- WhatsApp Business Account ID
-- phone_number_id (TEXT)                   -- Phone Number ID de Meta
-- meta_access_token (TEXT, encrypted)      -- System User Token
-- meta_webhook_verify_token (TEXT)
-- n8n_base_url (TEXT)
-- n8n_webhook_secret (TEXT, encrypted)     -- HMAC secret
-- google_calendar_id (TEXT)
-- google_service_account_json (TEXT, encrypted)
-```
+### Funciones helper en Supabase
+- `get_clerk_user_id()` → `auth.jwt() ->> 'sub'`
+- `get_clerk_org_id()` → `auth.jwt() ->> 'org_id'`
+- `get_tenant_id()` → UUID del tenant via `clerk_org_id`
+- `get_user_id()` → UUID del user via `clerk_user_id`
+- `is_super_admin()` → busca en tabla `super_admins`
+- `has_role(required_role)` → valida jerarquía de roles
 
-#### `users`
-Usuarios del CRM vinculados a Supabase Auth.
-```sql
-- id (UUID, PK, FK auth.users)
-- tenant_id (UUID, FK)
-- full_name, email, avatar_url, phone
-- role (TEXT)           -- 'owner' | 'admin' | 'agent' | 'viewer'
-- is_active, last_seen_at
-```
-
-#### `funnel_stages`
-Fases configurables del embudo/kanban.
-```sql
-- id, tenant_id, name, slug, color, position
-- is_won, is_lost, is_default
-```
-
-#### `tags`
-Etiquetas para categorizar contactos.
-```sql
-- id, tenant_id, name, color
-```
-
-#### `contacts`
-Tabla maestra de contactos/leads.
-```sql
-- id, tenant_id
-- first_name, last_name, phone (E.164), email, company, job_title, city, country
-- wa_id (WhatsApp ID sin +)
-- funnel_stage_id (FK)
-- lead_score (0-100)
-- source ('whatsapp' | 'web' | 'csv' | 'manual' | 'referral' | 'campaign')
-- assigned_to (FK users)
-- ai_active (BOOLEAN)              -- Si la IA está controlando
-- last_incoming_at (TIMESTAMPTZ)   -- Para ventana 24h
-- custom_fields (JSONB)
-- notes, last_contacted_at
-```
-
-#### `contact_tags`
-Relación muchos-a-muchos.
-```sql
-- contact_id (FK), tag_id (FK)
-- PRIMARY KEY (contact_id, tag_id)
-```
-
-#### `conversations`
-Metadatos de conversación por contacto.
-```sql
-- id, tenant_id, contact_id (FK)
-- status ('open' | 'resolved' | 'pending' | 'snoozed')
-- ai_active, assigned_agent_id
-- window_expires_at (TIMESTAMPTZ)   -- 24h window
-- unread_count, last_message_at, last_message_preview, last_message_direction
-```
-
-#### `messages`
-Todos los mensajes del sistema.
-```sql
-- id, tenant_id, conversation_id, contact_id
-- content, content_type ('text'|'image'|'audio'|'video'|'document'|'sticker'|'location'|'contacts'|'template'|'reaction')
-- direction ('inbound'|'outbound')
-- sender_type ('contact'|'agent'|'bot'|'system')
-- sender_id (user.id si agente)
-- media_url, media_mime_type, media_filename, media_size_bytes
-- latitude, longitude, location_name
-- template_name, template_params (JSONB)
-- reaction_emoji, reacted_to_message_id
-- wa_message_id (wamid de Meta)
-- delivery_status ('pending'|'sent'|'delivered'|'read'|'failed')
-- error_message
-```
-
-#### `n8n_chat_histories`
-Memoria de conversación del agente IA (formato LangChain).
-```sql
-- id (BIGSERIAL, PK)
-- session_id (TEXT)   -- "<wa_id>@s.whatsapp.net"
-- message (JSONB)     -- {type, content, tool_calls?, ...}
-- time_stamp
-```
-**Permisos:** service_role tiene ALL, anon/authenticated tienen SELECT/INSERT/UPDATE.
-
-#### `ai_actions`
-Log de acciones del agente IA.
-```sql
-- id, tenant_id, conversation_id, contact_id
-- action_type (TEXT)           -- 'extract_email' | 'schedule_appointment' | etc
-- tool_name, status, summary, details (JSONB)
-- reasoning, stage_before, stage_after
-- data_captured (JSONB)
-```
-
-#### `appointments`
-Citas con sync a Google Calendar.
-```sql
-- id, tenant_id, contact_id, assigned_to
-- title, description, location
-- start_time, end_time, timezone ('America/Bogota')
-- status ('scheduled'|'confirmed'|'completed'|'cancelled'|'no_show'|'rescheduled')
-- google_event_id, google_calendar_id, google_meet_link
-- created_by ('bot'|'manual'|'import')
-- reminder_sent
-```
-
-#### `hsm_templates`
-Cache de templates HSM de Meta.
-```sql
-- id, tenant_id, meta_template_id
-- name, language, category ('MARKETING'|'UTILITY'|'AUTHENTICATION')
-- status ('APPROVED'|'PENDING'|'REJECTED'|'PAUSED'|'DISABLED')
-- header_type, header_text, body_text, footer_text, buttons (JSONB)
-- variables_count, example_values (JSONB)
-- last_synced_at
-```
-
-#### `campaigns`
-Campañas de envío masivo.
-```sql
-- id, tenant_id, name, description
-- template_id (FK hsm_templates), template_name, template_variables (JSONB)
-- segment_filters (JSONB), total_contacts
-- status ('draft'|'scheduled'|'sending'|'completed'|'failed'|'cancelled')
-- scheduled_at, started_at, completed_at
-- sent_count, delivered_count, read_count, replied_count, failed_count
-- created_by
-```
-
-#### `campaign_messages`
-Log de cada envío individual.
-```sql
-- id, tenant_id, campaign_id, contact_id
-- status ('pending'|'sent'|'delivered'|'read'|'replied'|'failed')
-- wa_message_id, error_code, error_message
-- sent_at, delivered_at, read_at, replied_at
-```
-
-#### `phase_transitions`
-Historial de cambios de fase.
-```sql
-- id, tenant_id, contact_id
-- previous_stage_id, new_stage_id
-- previous_stage_name, new_stage_name
-- reason ('automatic'|'manual'|'bot'|'campaign')
-- trigger_description, changed_by
-```
-
-#### `activity_log`
-Timeline de actividad del contacto.
-```sql
-- id, tenant_id, contact_id
-- activity_type (TEXT)   -- 'message_sent'|'phase_changed'|'appointment_created'|'tag_added'|'note_added'|'lead_score_changed'|'ai_action'|'human_takeover'
-- channel ('whatsapp'|'system'|'manual'|'bot')
-- description, metadata (JSONB)
-- performed_by, performed_by_name
-```
-
-#### `daily_metrics`
-Métricas agregadas (escritas por n8n).
-```sql
-- id, tenant_id, date (UNIQUE tenant_id + date)
-- conversations_total, conversations_new, conversations_resolved
-- messages_inbound, messages_outbound, messages_by_bot, messages_by_human
-- bot_response_avg_seconds, bot_handoff_count
-- leads_new, leads_qualified, leads_won, leads_lost
-- appointments_booked, appointments_completed, appointments_no_show
-- campaigns_sent, campaigns_delivered, campaigns_read, campaigns_replied
-```
-
-#### `contact_notes`
-Notas internas sobre contactos.
-```sql
-- id, tenant_id, contact_id, content, created_by
-```
+### Roles
+| Clerk Role | CRM Role | Permisos |
+|------------|----------|----------|
+| `org:owner` | owner | Todo + credenciales |
+| `org:admin` | admin | Todo excepto credenciales |
+| `org:member` | agent | CRUD contacts, messages, conversations |
+| `org:viewer` | viewer | Solo lectura |
 
 ---
 
-## 4. Páginas y Rutas
+## 4. Database Schema (22 tablas)
 
-### Autenticación
+### Tablas core
+
+#### `super_admins`
+Equipo de DS CRM con acceso total a todos los tenants.
+```sql
+- id (UUID, PK)
+- clerk_user_id (TEXT, UNIQUE)
+- email, name
+- is_active (BOOLEAN)
+```
+
+#### `tenants`
+Organizaciones cliente. Una por cada Clerk Organization.
+```sql
+- id (UUID, PK)
+- clerk_org_id (TEXT, UNIQUE)     -- Clerk Organization ID
+- name, slug (UNIQUE), logo_url
+- plan ('starter' | 'professional' | 'enterprise')
+- is_active, max_agents, max_contacts
+```
+
+#### `users`
+Usuarios sincronizados desde Clerk via webhook.
+```sql
+- id (UUID, PK)
+- clerk_user_id (TEXT, UNIQUE)    -- Clerk User ID
+- tenant_id (UUID, FK)
+- full_name, email, avatar_url, phone
+- role ('owner' | 'admin' | 'agent' | 'viewer')
+- is_active, last_seen_at
+```
+
+#### `tenant_credentials`
+Credenciales de integraciones por tenant.
+```sql
+- tenant_id (UUID, UNIQUE FK)
+- waba_id, phone_number_id, meta_access_token, meta_webhook_verify_token
+- n8n_base_url, n8n_webhook_secret        -- n8n independiente por tenant
+- google_calendar_id, google_service_account_json
+```
+
+#### `funnel_stages` — Fases configurables del kanban
+#### `tags` — Etiquetas para contactos
+#### `contacts` — Leads/contactos master
+#### `contact_tags` — Relación muchos-a-muchos
+#### `conversations` — Metadatos de conversación WhatsApp
+#### `messages` — Todos los mensajes
+#### `n8n_chat_histories` — Memoria del agente IA (LangChain)
+#### `ai_actions` — Log de acciones del bot
+#### `appointments` — Citas con Google Calendar sync
+#### `hsm_templates` — Cache de templates Meta
+#### `campaigns` — Campañas masivas
+#### `campaign_messages` — Tracking por contacto
+#### `phase_transitions` — Historial de cambios de fase
+#### `activity_log` — Timeline de actividad del contacto
+#### `daily_metrics` — Métricas agregadas por n8n
+#### `contact_notes` — Notas internas
+#### `canned_responses` — Respuestas rápidas
+#### `custom_field_definitions` — Campos personalizados
+
+---
+
+## 5. Páginas y Rutas
+
+### Autenticación (Clerk)
 | Ruta | Descripción |
 |------|-------------|
-| `/login` | Login con magic link (email OTP) |
-| `/auth/callback` | OAuth redirect handler |
+| `/sign-in` | Login con Clerk |
+| `/sign-up` | Registro con Clerk |
+| `/onboarding` | Crear organización post-registro |
 
 ### Dashboard (CRM)
 | Ruta | Descripción |
@@ -274,11 +170,11 @@ Notas internas sobre contactos.
 | `/conversations` | Interfaz de chat WhatsApp (3 paneles) |
 | `/contacts` | Lista de contactos (tabla + kanban) |
 | `/contacts/[contactId]` | Detalle de contacto |
-| `/contacts/import` | Importación CSV (placeholder) |
 | `/calendar` | Calendario con Google Calendar sync |
 | `/templates` | Lista de templates HSM |
-| `/templates/campaigns` | Gestión de campañas |
-| `/templates/new` | Crear campaña |
+| `/campaigns` | Gestión de campañas |
+| `/campaigns/new` | Crear campaña |
+| `/campaigns/[campaignId]` | Detalle de campaña |
 | `/reports` | Dashboard de analytics |
 | `/settings/general` | Configuración del tenant |
 | `/settings/users` | Gestión de usuarios |
@@ -291,255 +187,171 @@ Notas internas sobre contactos.
 ### API Routes
 | Ruta | Método | Descripción |
 |------|--------|-------------|
-| `/api/webhooks/n8n/send-message` | POST | Enviar mensaje saliente |
-| `/api/webhooks/n8n/send-campaign` | POST | Trigger campaña |
-| `/api/calendar/events` | POST | CRUD citas (dispara webhooks calendar-create/update a n8n) |
-| `/api/meta/templates` | GET | Fetch templates de Meta |
+| `/api/webhooks/clerk` | POST | Sincroniza Clerk users/orgs → Supabase |
+| `/api/webhooks/n8n/send-message` | POST | Enviar mensaje saliente vía n8n |
+| `/api/webhooks/n8n/send-campaign` | POST | Trigger campaña en n8n |
+| `/api/webhooks/n8n/take-control` | POST | Toma de control humano |
+| `/api/webhooks/n8n/release-control` | POST | Devuelve control al bot |
+| `/api/calendar/events` | POST | CRUD citas (dispara webhooks a n8n) |
+| `/api/meta/templates` | GET/POST | Fetch/crear templates de Meta |
+| `/api/meta/templates/sync` | POST | Sincronizar templates desde n8n del tenant |
 
 ---
 
-## 5. Funcionalidades
+## 6. Funcionalidades
 
-### 5.1 WhatsApp CRM
-- **Mensajería bidireccional** via Meta WhatsApp Business Cloud API (n8n)
-- **Interfaz de chat 3 paneles:** lista de conversaciones | chat activo | detalle de contacto
-- **Realtime** mensajes via Supabase subscriptions
-- **Tipos de mensaje:** texto, imagen, audio, video, documento, sticker, ubicación, contactos, template, reacción
-- **Estados de entrega:** pending → sent → delivered → read → failed
-- **Ventana de 24 horas:** tracking de `window_expires_at` para mensajes entrantes
-- **Human/AI handoff:** `conversations.ai_active` y `contacts.ai_active` (Supabase directo, sin n8n)
+### 6.1 WhatsApp CRM
+- Mensajería bidireccional via Meta WhatsApp Business Cloud API (n8n por tenant)
+- Interfaz de chat 3 paneles: lista de conversaciones | chat activo | detalle de contacto
+- Realtime mensajes via Supabase subscriptions
+- Tipos de mensaje: texto, imagen, audio, video, documento, sticker, ubicación, contactos, template, reacción
+- Estados de entrega: pending → sent → delivered → read → failed
+- Ventana de 24 horas tracking
+- Human/AI handoff
 
-### 5.2 Agente IA (n8n)
-El bot de IA (n8n) maneja:
-- **Calificación de leads** (Lead scoring 0-100)
-- **Extracción de datos** (email, teléfono, cita)
-- **Agendamiento de citas** (crea en `appointments`)
-- **Cambio de fases** (actualiza `funnel_stage_id`)
-- **Respuestas proactivas** (envía mensajes automáticos)
-- **Toma de control humana** (human handoff)
+### 6.2 Multi-tenant Real
+- Cualquier usuario puede registrarse y crear su organización
+- Clerk Organizations = tenants del CRM
+- Invitaciones de usuarios vía Clerk
+- Roles por organización: owner, admin, agent, viewer
+- RLS completo en Supabase por tenant
+- Panel de Super Admin (DS CRM team)
 
-**Tablas de memoria IA:**
-- `n8n_chat_histories` - memoria conversacional (LangChain format)
-- `ai_actions` - log de acciones del agente
+### 6.3 n8n por Tenant
+- Cada cliente tiene su propia instancia de n8n
+- Credenciales guardadas en `tenant_credentials` (n8n_base_url + n8n_webhook_secret)
+- El CRM firma los webhooks con HMAC (lib/n8n/client.ts)
 
-### 5.3 Embudo/Kanban
-- **Fases configurables** por tenant
-- **Drag & drop** con @dnd-kit
-- **Lead scoring** 0-100
-- **Historial de transiciones** (`phase_transitions`)
-- Marcas `is_won` / `is_lost` para cierre
+### 6.4 Agente IA
+- Calificación de leads (0-100)
+- Extracción de datos, agendamiento de citas, cambio de fases
+- Memoria en `n8n_chat_histories` (LangChain format)
+- Log en `ai_actions`
 
-### 5.4 Campañas Masivas
-- **Templates HSM** de Meta (MARKETING, UTILITY, AUTHENTICATION)
-- **Segmentación** por filtros JSONB (tags, fase, score, etc)
-- **Tracking individual** por contacto (`campaign_messages`)
-- **Métricas:** sent, delivered, read, replied, failed
+### 6.5 Embudo/Kanban
+- Fases configurables por tenant
+- Drag & drop con @dnd-kit
+- Historial de transiciones (`phase_transitions`)
 
-### 5.5 Calendario
-- **Google Calendar** bidirectional sync
-- **Google Meet** auto-generado
-- **Drag & resize** de eventos
-- **Múltiples estados** de cita
+### 6.6 Campañas Masivas
+- Templates HSM (MARKETING, UTILITY, AUTHENTICATION)
+- Segmentación por filtros JSONB
+- Tracking individual por contacto
 
-### 5.6 Analytics / Reports
+### 6.7 Calendario
+- Google Calendar bidirectional sync
+- Google Meet auto-generado
+
+### 6.8 Analytics
 - KPIs en tiempo real
-- Gráficos de volumen de mensajes
-- Distribución del embudo
 - Métricas diarias agregadas (`daily_metrics`)
-- Metrics de bot: response time, handoff count
-
-### 5.7 Contact Management
-- **Vistas:** tabla y kanban
-- **Campos personalizados** (JSONB `custom_fields`)
-- **Tags** para segmentación
-- **Notas internas** (`contact_notes`)
-- **Activity timeline** (`activity_log`)
-- **Importación CSV** (placeholder)
-- **Origen del lead:** whatsapp, web, csv, manual, referral, campaign
-
-### 5.8 Multi-tenant
-- **RLS (Row Level Security)** en todas las tablas
-- **Aislamiento total** por `tenant_id`
-- **Planes:** starter, professional, enterprise (límites de usuarios y contactos)
-- **Roles:** owner, admin, agent, viewer
+- Métricas de bot: response time, handoff count
 
 ---
 
-## 6. Estructura de Archivos
+## 7. Estructura de Archivos
 
 ```
-TuContador-CRM/
+ds-crm/
 ├── app/
 │   ├── (auth)/
-│   │   ├── auth/callback/route.ts
-│   │   ├── login/page.tsx
-│   │   └── layout.tsx
+│   │   ├── sign-in/[[...sign-in]]/page.tsx    # Clerk SignIn component
+│   │   ├── sign-up/[[...sign-up]]/page.tsx    # Clerk SignUp component
+│   │   └── layout.tsx                          # Auth layout (DS CRM branding)
 │   ├── (dashboard)/
 │   │   ├── contacts/
-│   │   │   ├── [contactId]/page.tsx
-│   │   │   ├── import/page.tsx
-│   │   │   └── page.tsx
-│   │   ├── conversations/page.tsx
-│   │   ├── calendar/page.tsx
-│   │   ├── templates/
-│   │   │   ├── campaigns/page.tsx
-│   │   │   ├── new/page.tsx
-│   │   │   └── page.tsx
-│   │   ├── reports/page.tsx
-│   │   └── settings/
-│   │       ├── canned-responses/page.tsx
-│   │       ├── custom-fields/page.tsx
-│   │       ├── funnel/page.tsx
-│   │       ├── general/page.tsx
-│   │       ├── integrations/page.tsx
-│   │       ├── tags/page.tsx
-│   │       └── users/page.tsx
-│   ├── api/
+│   │   ├── conversations/
 │   │   ├── calendar/
-│   │   │   ├── events/route.ts
-│   │   │   └── sync/route.ts
-│   │   ├── meta/templates/route.ts
+│   │   ├── campaigns/
+│   │   ├── reports/
+│   │   ├── templates/
+│   │   └── settings/
+│   ├── api/
 │   │   ├── webhooks/
-│   │   │   └── n8n/
-│   │   │       ├── inbound-message/route.ts
-│   │   │       ├── send-message/route.ts
-│   │   │       ├── send-campaign/route.ts
-│   │   │       ├── move-stage/route.ts
-│   │   │       ├── take-control/route.ts
-│   │   │       └── release-control/route.ts
-│   │   └── chatwoot/route.ts (placeholder)
-│   ├── layout.tsx
-│   └── page.tsx (redirect a /conversations)
+│   │   │   ├── clerk/route.ts                  # Clerk → Supabase sync
+│   │   │   └── n8n/                            # n8n webhook handlers
+│   │   ├── calendar/events/route.ts
+│   │   └── meta/templates/route.ts
+│   ├── onboarding/page.tsx                     # Create org post-signup
+│   ├── layout.tsx                              # ClerkProvider root
+│   └── page.tsx                               # redirect → /conversations
 ├── components/
-│   ├── calendar/
-│   ├── contacts/
-│   ├── conversations/
-│   ├── layout/
-│   ├── shared/
-│   └── ui/ (shadcn components)
-├── hooks/ (12 custom hooks)
+│   ├── calendar/, contacts/, conversations/
+│   ├── layout/ (sidebar, topbar)
+│   ├── shared/, ui/
+├── hooks/ (13 custom hooks)
 ├── lib/
-│   ├── n8n/
-│   │   └── client.ts (HMAC signed webhook client)
+│   ├── n8n/client.ts          # HMAC signed webhook client
 │   ├── supabase/
-│   │   ├── client.ts
-│   │   ├── server.ts
-│   │   ├── admin.ts
-│   │   └── auth.ts
-│   ├── types/
-│   └── utils/
-├── stores/ (Zustand stores)
+│   │   ├── client.ts          # Browser client (Clerk JWT injection)
+│   │   ├── server.ts          # Server client (service role + Clerk token)
+│   │   ├── admin.ts           # Admin client (service role)
+│   │   └── auth-context.ts    # getAuthContext() para API routes
+│   └── types/database.ts      # TypeScript types (con clerk_user_id, clerk_org_id)
+├── middleware.ts               # Clerk middleware (protege todas las rutas)
 ├── providers/
+│   ├── auth-provider.tsx       # useAuth() → user + tenant desde Supabase
+│   ├── supabase-provider.tsx   # Supabase client con JWT de Clerk
+│   └── theme-provider.tsx
+├── stores/
+│   ├── conversation-store.ts
+│   └── ui-store.ts
 ├── supabase/
-│   ├── schema.sql (734 líneas)
-│   └── seed.sql
-├── middleware.ts
-├── package.json
-└── tailwind.config.ts
+│   └── schema.sql              # Schema completo (22 tablas, RLS, Clerk JWT)
+└── .env.example                # Variables requeridas
 ```
 
 ---
 
-## 7. Integraciones
-
-### 7.1 n8n
-- **Comunicación:** Webhooks HMAC-signed (`lib/n8n/client.ts`)
-- **6 webhooks** definidos en el CRM
-- **n8n actúa como:** AI agent, message processor, campaign executor, metrics aggregator
-- **Credenciales:** `n8n_base_url`, `n8n_webhook_secret` en `tenant_credentials`
-
-### 7.2 Meta WhatsApp Business API
-- **Credenciales:** `waba_id`, `phone_number_id`, `meta_access_token`
-- **Webhooks:** inbound messages, delivery status
-- **HSM Templates:** cache local (`hsm_templates`)
-- **Webhook verify token:** `meta_webhook_verify_token`
-
-### 7.3 Google Calendar
-- **Credenciales:** `google_calendar_id`, `google_service_account_json` (Vault encrypted)
-- **Features:** create events, sync bidireccional, Google Meet links
-- **API:** google Calendar API v3
-
----
-
-## 8. Automatizaciones n8n
-
-**n8n maneja:**
-1. Envío de mensajes WhatsApp (`send-message`)
-2. Ejecución de campañas masivas (`send-campaign`)
-3. Crear eventos en Google Calendar (`calendar-create`)
-4. Actualizar eventos en Google Calendar (`calendar-update`)
-
-**El CRM envía webhooks a n8n:**
-- Enviar mensaje (`/send-message`)
-- Ejecutar campaña (`/send-campaign`)
-- Crear evento (`/calendar-create`)
-- Actualizar evento (`/calendar-update`)
-
-**Lo que Supabase maneja directo (sin n8n):**
-- Mensajes entrantes → Realtime subscriptions
-- Mover fases → `contacts.funnel_stage_id` directo
-- Human/AI handoff → `conversations.ai_active` directo
-
----
-
-## 9. Autenticación y Autorización
-
-### Auth
-- **Método:** Magic link (email OTP) via Supabase Auth
-- **Session:** Manejada por middleware (`middleware.ts`)
-- **Refresh:** Automático en cada request
-
-### Roles
-| Rol | Permisos |
-|-----|----------|
-| owner | Todo + credenciales + settings |
-| admin | Todo excepto credenciales |
-| agent | CRUD contacts, messages, conversations |
-| viewer | Solo lectura |
-
-### RLS
-- Todas las tablas tienen `tenant_id`
-- Helper: `get_user_tenant_id()` y `get_user_role()`
-- n8n usa `service_role` (bypass RLS)
-
----
-
-## 10. Realtime
-
-Tablas con realtime habilitado:
-- `contacts`
-- `conversations`
-- `messages`
-- `n8n_chat_histories`
-- `ai_actions`
-- `appointments`
-- `contact_tags`
-- `phase_transitions`
-
----
-
-## 11. Environment Variables
+## 8. Variables de Entorno
 
 ```env
+# Supabase
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+
+# Clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/conversations
+NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/onboarding
+CLERK_WEBHOOK_SECRET=
+
+# Resend
+RESEND_API_KEY=
+RESEND_FROM_EMAIL=
+
+# App
 NEXT_PUBLIC_APP_URL=
-N8N_BASE_URL=
-N8N_WEBHOOK_SECRET=
-META_WABA_ID=
-META_PHONE_NUMBER_ID=
-META_ACCESS_TOKEN=
-GOOGLE_CALENDAR_ID=
 ```
 
 ---
 
-## 12. Características UI/UX
+## 9. Setup Clerk — Pasos críticos
 
-- **Tema:** Dark OLED glassmorphism
-- **Tailwind CSS v4** con CSS-first config
-- **shadcn/ui** components (35+)
-- **Responsive:** Mobile-first
-- **Notificaciones:** Sonner toasts
-- **Iconos:** Lucide React
+1. **JWT Template** `supabase` con HS256 + Supabase JWT Secret + claims: `sub`, `role: "authenticated"`, `org_id`, `org_role`
+2. **Organizations** activadas en el dashboard de Clerk
+3. **Webhook** en `/api/webhooks/clerk` suscrito a: `user.created/updated`, `organization.created/updated`, `organizationMembership.created/updated/deleted`
+4. **Roles custom** en Clerk: `org:owner`, `org:admin`, `org:member` (default), `org:viewer`
+
+---
+
+## 10. Realtime (tablas con suscripciones)
+
+- `contacts`, `conversations`, `messages`
+- `n8n_chat_histories`, `ai_actions`
+- `appointments`, `contact_tags`, `phase_transitions`
+
+---
+
+## 11. Pendiente / Próximas fases
+
+- [ ] Regenerar tipos TypeScript desde el schema real (`supabase gen types`)
+- [ ] Super Admin Panel (`/admin`) — ver todos los tenants, métricas globales
+- [ ] Billing / Planes (Stripe)
+- [ ] WhatsApp Embedded Signup (conectar WABA desde el CRM)
+- [ ] Resend — emails de invitación y bienvenida
+- [ ] Vercel deployment setup

@@ -25,16 +25,16 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             className="inline-flex items-center justify-center w-14 h-14 rounded-2xl text-white text-xl font-bold mb-5 glow-primary"
             style={{ background: 'linear-gradient(135deg, oklch(0.62 0.24 264), oklch(0.58 0.24 285))' }}
           >
-            TC
+            DS
           </div>
-          <h1 className="text-2xl font-bold gradient-text">TuContador CRM</h1>
+          <h1 className="text-2xl font-bold gradient-text">DS CRM</h1>
           <p className="text-muted-foreground text-sm mt-1.5">
             Plataforma inteligente de gestión de clientes
           </p>
         </div>
 
-        {/* Card — usa variables del tema, funciona en dark y light */}
-        <div className="glass-card">
+        {/* Clerk components render here */}
+        <div className="flex justify-center">
           {children}
         </div>
       </div>

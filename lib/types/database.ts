@@ -26,6 +26,7 @@ export type Database = {
       tenants: {
         Row: {
           id: string
+          clerk_org_id: string
           name: string
           slug: string
           logo_url: string | null
@@ -63,8 +64,9 @@ export type Database = {
       users: {
         Row: {
           id: string
-          tenant_id: string
-          full_name: string
+          clerk_user_id: string
+          tenant_id: string | null
+          full_name: string | null
           email: string
           avatar_url: string | null
           phone: string | null
@@ -74,7 +76,7 @@ export type Database = {
           created_at: string
           updated_at: string
         }
-        Insert: Omit<Database['public']['Tables']['users']['Row'], 'created_at' | 'updated_at'>
+        Insert: Omit<Database['public']['Tables']['users']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['users']['Insert']>
       }
       funnel_stages: {
@@ -421,8 +423,12 @@ export type Database = {
       }
     }
     Functions: {
-      get_user_tenant_id: { Args: Record<never, never>; Returns: string }
-      get_user_role: { Args: Record<never, never>; Returns: string }
+      get_clerk_user_id: { Args: Record<never, never>; Returns: string }
+      get_clerk_org_id: { Args: Record<never, never>; Returns: string }
+      get_tenant_id: { Args: Record<never, never>; Returns: string }
+      get_user_id: { Args: Record<never, never>; Returns: string }
+      is_super_admin: { Args: Record<never, never>; Returns: boolean }
+      has_role: { Args: { required_role: string }; Returns: boolean }
     }
   }
 }

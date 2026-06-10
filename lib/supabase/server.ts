@@ -1,26 +1,26 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
-export async function createClient() {
-  const cookieStore = await cookies()
+// Server-side Supabase client using the service role key.
+// Bypasses RLS — only use in trusted API routes and webhooks.
+export function createAdminClient() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return createSupabaseClient<any>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
 
-  return createServerClient(
+// Server-side Supabase client with a Clerk JWT — respects RLS.
+// Use in Server Components / API routes that have access to the Clerk token.
+export async function createServerClient(clerkToken: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return createSupabaseClient<any>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {
-            // Server Components — ignore
-          }
-        },
+      global: {
+        headers: { Authorization: `Bearer ${clerkToken}` },
       },
     }
   )

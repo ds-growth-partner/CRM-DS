@@ -45,7 +45,7 @@ export default function TemplatesPage() {
   async function handleSync() {
     setSyncing(true)
     try {
-      const res = await fetch('https://tu-contador-n8n.qr3bct.easypanel.host/webhook/sync-meta-template', {
+      const res = await fetch('/api/meta/templates/sync', {
         method: 'POST',
       })
       if (res.ok) {

@@ -53,7 +53,7 @@ export default function GeneralSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Organización</CardTitle>
-            <CardDescription>Información de tu empresa en TuContador</CardDescription>
+            <CardDescription>Información general de tu organización</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1.5">

@@ -121,7 +121,7 @@ export function Sidebar() {
               TC
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-bold text-foreground leading-tight">TuContador</p>
+              <p className="text-sm font-bold text-foreground leading-tight">DS CRM</p>
               <p className="text-[10px] text-muted-foreground truncate">{tenant?.name ?? 'CRM'}</p>
             </div>
           </div>
