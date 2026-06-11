@@ -723,3 +723,45 @@ ALTER PUBLICATION supabase_realtime ADD TABLE phase_transitions;
 -- ─────────────────────────────────────────────
 GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+
+
+-- ─────────────────────────────────────────────
+-- INBOUND WHATSAPP ROUTING (migration: inbound_whatsapp_tenant_routing)
+-- Maps the Meta phone_number_id on each inbound message -> tenant_id.
+-- ─────────────────────────────────────────────
+
+-- A phone_number_id / waba_id belongs to exactly one tenant (routing keys).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_credentials_phone_number_id
+  ON tenant_credentials (phone_number_id)
+  WHERE phone_number_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_credentials_waba_id
+  ON tenant_credentials (waba_id)
+  WHERE waba_id IS NOT NULL;
+
+-- Enable contact upserts by WhatsApp id within a tenant
+-- (multiple NULL wa_id rows are still allowed — NULLs are distinct).
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'uq_contacts_tenant_wa_id'
+  ) THEN
+    ALTER TABLE contacts ADD CONSTRAINT uq_contacts_tenant_wa_id UNIQUE (tenant_id, wa_id);
+  END IF;
+END $$;
+
+-- Resolver used by n8n: phone_number_id -> tenant_id
+CREATE OR REPLACE FUNCTION resolve_tenant_by_phone_number_id(p_phone_number_id text)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT tenant_id
+  FROM tenant_credentials
+  WHERE phone_number_id = p_phone_number_id
+  LIMIT 1
+$$;
+
+GRANT EXECUTE ON FUNCTION resolve_tenant_by_phone_number_id(text)
+  TO anon, authenticated, service_role;

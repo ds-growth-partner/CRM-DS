@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { toast } from 'sonner'
-import { Loader2, Save, Eye, EyeOff } from 'lucide-react'
+import { Loader2, Save, Eye, EyeOff, ChevronDown, ChevronRight } from 'lucide-react'
 
 type Credentials = {
   n8n_base_url: string
@@ -35,6 +35,11 @@ const EMPTY: Credentials = {
  * Edits a single tenant's credentials (tenant_credentials row).
  * Used by both settings/integrations (tenant owner) and /admin (super admin).
  * RLS handles authorization: owner-of-tenant or super_admin can write.
+ *
+ * Focused on what matters for the per-tenant n8n model:
+ *   - n8n URL + secret  (where the CRM sends outbound webhooks)
+ *   - WhatsApp Phone Number ID  (inbound routing key → tenant_id)
+ * Everything else lives under "Avanzado".
  */
 export function CredentialsForm({
   tenantId,
@@ -48,6 +53,7 @@ export function CredentialsForm({
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showSecrets, setShowSecrets] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -125,17 +131,17 @@ export function CredentialsForm({
         </button>
       </div>
 
-      {/* n8n — lo único que normalmente cambia por cliente */}
+      {/* n8n — a dónde el CRM envía los webhooks de este cliente */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">n8n</CardTitle>
+          <CardTitle className="text-base">n8n del cliente</CardTitle>
           <CardDescription>
-            Instancia de automatización e IA de este cliente. Los webhooks del CRM se firman
-            con el secret y se envían a esta URL.
+            URL de la instancia de n8n a la que el CRM enviará los webhooks (mensajes salientes,
+            campañas, tomar/soltar control).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Field label="URL base de n8n" hint="Ej: https://cliente.app.n8n.cloud">
+          <Field label="URL base de n8n" hint="Ej: https://cliente.app.n8n.cloud — sin /webhook al final">
             <Input
               value={form.n8n_base_url}
               onChange={(e) => set('n8n_base_url', e.target.value)}
@@ -143,7 +149,7 @@ export function CredentialsForm({
               disabled={!canWrite}
             />
           </Field>
-          <Field label="Webhook Secret (HMAC)" hint="Debe coincidir con el secret configurado en el n8n del cliente">
+          <Field label="Webhook Secret (HMAC)" hint="Debe coincidir con el secret configurado en el n8n del cliente. Opcional pero recomendado.">
             <Input
               type={secretType}
               value={form.n8n_webhook_secret}
@@ -154,54 +160,92 @@ export function CredentialsForm({
         </CardContent>
       </Card>
 
-      {/* Meta WhatsApp */}
+      {/* WhatsApp — la llave de enrutamiento entrante */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Meta WhatsApp Business</CardTitle>
-          <CardDescription>Credenciales de la Cloud API de este cliente</CardDescription>
+          <CardTitle className="text-base">Número de WhatsApp</CardTitle>
+          <CardDescription>
+            El <span className="font-medium">Phone Number ID</span> es la llave con la que los
+            mensajes entrantes se asignan a este cliente automáticamente.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Field label="WABA ID">
-            <Input value={form.waba_id} onChange={(e) => set('waba_id', e.target.value)} disabled={!canWrite} />
+          <Field label="Phone Number ID" hint="De Meta → WhatsApp → API Setup. Único por cliente — es lo que enruta los mensajes entrantes.">
+            <Input
+              value={form.phone_number_id}
+              onChange={(e) => set('phone_number_id', e.target.value)}
+              placeholder="Ej: 123456789012345"
+              disabled={!canWrite}
+            />
           </Field>
-          <Field label="Phone Number ID">
-            <Input value={form.phone_number_id} onChange={(e) => set('phone_number_id', e.target.value)} disabled={!canWrite} />
-          </Field>
-          <Field label="Access Token">
-            <Input type={secretType} value={form.meta_access_token} onChange={(e) => set('meta_access_token', e.target.value)} disabled={!canWrite} />
-          </Field>
-          <Field label="Webhook Verify Token">
-            <Input type={secretType} value={form.meta_webhook_verify_token} onChange={(e) => set('meta_webhook_verify_token', e.target.value)} disabled={!canWrite} />
-          </Field>
-        </CardContent>
-      </Card>
-
-      {/* Google Calendar */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Google Calendar</CardTitle>
-          <CardDescription>Sincronización de citas</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Field label="Calendar ID">
-            <Input value={form.google_calendar_id} onChange={(e) => set('google_calendar_id', e.target.value)} disabled={!canWrite} />
-          </Field>
-          <Field label="Service Account JSON">
-            <textarea
-              className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              value={showSecrets ? form.google_service_account_json : form.google_service_account_json ? '••••••••••••' : ''}
-              onChange={(e) => set('google_service_account_json', e.target.value)}
-              disabled={!canWrite || !showSecrets}
-              placeholder={showSecrets ? '{ "type": "service_account", … }' : 'Pulsa "Mostrar secretos" para editar'}
+          <Field label="WABA ID" hint="WhatsApp Business Account ID (opcional)">
+            <Input
+              value={form.waba_id}
+              onChange={(e) => set('waba_id', e.target.value)}
+              disabled={!canWrite}
             />
           </Field>
         </CardContent>
       </Card>
 
+      {/* Avanzado — normalmente lo maneja el n8n del cliente, no el CRM */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((s) => !s)}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {showAdvanced ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          Avanzado (opcional)
+        </button>
+
+        {showAdvanced && (
+          <div className="mt-4 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Meta — tokens directos</CardTitle>
+                <CardDescription>
+                  Solo si el CRM llama a Meta directamente. En tu modelo, esto vive en el n8n del cliente.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Field label="Access Token">
+                  <Input type={secretType} value={form.meta_access_token} onChange={(e) => set('meta_access_token', e.target.value)} disabled={!canWrite} />
+                </Field>
+                <Field label="Webhook Verify Token">
+                  <Input type={secretType} value={form.meta_webhook_verify_token} onChange={(e) => set('meta_webhook_verify_token', e.target.value)} disabled={!canWrite} />
+                </Field>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Google Calendar</CardTitle>
+                <CardDescription>Sincronización de citas (opcional)</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Field label="Calendar ID">
+                  <Input value={form.google_calendar_id} onChange={(e) => set('google_calendar_id', e.target.value)} disabled={!canWrite} />
+                </Field>
+                <Field label="Service Account JSON">
+                  <textarea
+                    className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    value={showSecrets ? form.google_service_account_json : form.google_service_account_json ? '••••••••••••' : ''}
+                    onChange={(e) => set('google_service_account_json', e.target.value)}
+                    disabled={!canWrite || !showSecrets}
+                    placeholder={showSecrets ? '{ "type": "service_account", … }' : 'Pulsa "Mostrar secretos" para editar'}
+                  />
+                </Field>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
+
       {canWrite ? (
         <Button type="submit" disabled={saving}>
           {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-          Guardar credenciales
+          Guardar
         </Button>
       ) : (
         <p className="text-sm text-muted-foreground">
