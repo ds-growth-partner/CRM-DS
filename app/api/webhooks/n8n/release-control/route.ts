@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/auth-context'
-import { n8nClient } from '@/lib/n8n/client'
+import { getN8nClientForTenant } from '@/lib/n8n/client'
 
 export async function POST(request: NextRequest) {
   const ctx = await getAuthContext()
@@ -9,7 +9,8 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   const payload = { ...body, tenant_id: ctx.tenantId, timestamp: new Date().toISOString() }
 
-  const res = await n8nClient.post('release-control', payload)
+  const client = await getN8nClientForTenant(ctx.tenantId)
+  const res = await client.post('release-control', payload)
   const data = await res.json().catch(() => ({}))
   return NextResponse.json(data, { status: res.status })
 }

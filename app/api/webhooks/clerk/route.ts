@@ -1,6 +1,34 @@
 import { headers } from 'next/headers'
 import { Webhook } from 'svix'
 import { createAdminClient } from '@/lib/supabase/server'
+import { config } from '@/lib/config'
+
+type SupabaseAdmin = ReturnType<typeof createAdminClient>
+
+// Auto-register the user as a super admin if their email is in SUPER_ADMIN_EMAILS.
+// Also de-registers them if they're removed from the list.
+async function syncSuperAdmin(
+  supabase: SupabaseAdmin,
+  clerkUserId: string,
+  email: string,
+  name: string | null,
+) {
+  if (!email) return
+  const isSuper = config.superAdminEmails.includes(email.toLowerCase())
+
+  if (isSuper) {
+    await supabase.from('super_admins').upsert(
+      { clerk_user_id: clerkUserId, email, name, is_active: true },
+      { onConflict: 'clerk_user_id' },
+    )
+  } else {
+    // Demote anyone no longer in the env list (idempotent — no-op if not present)
+    await supabase
+      .from('super_admins')
+      .update({ is_active: false })
+      .eq('clerk_user_id', clerkUserId)
+  }
+}
 
 type ClerkEvent = {
   type: string
@@ -47,12 +75,14 @@ export async function POST(req: Request) {
       const primaryEmail = (d.email_addresses as Array<{ email_address: string; id: string }>)
         ?.find((e) => e.id === d.primary_email_address_id)?.email_address ?? ''
 
+      const fullName = [d.first_name, d.last_name].filter(Boolean).join(' ') || null
       await supabase.from('users').upsert({
         clerk_user_id: d.id as string,
         email: primaryEmail,
-        full_name: [d.first_name, d.last_name].filter(Boolean).join(' ') || null,
+        full_name: fullName,
         avatar_url: (d.image_url as string) || null,
       }, { onConflict: 'clerk_user_id' })
+      await syncSuperAdmin(supabase, d.id as string, primaryEmail, fullName)
       break
     }
 
@@ -62,13 +92,15 @@ export async function POST(req: Request) {
       const primaryEmail = (d.email_addresses as Array<{ email_address: string; id: string }>)
         ?.find((e) => e.id === d.primary_email_address_id)?.email_address ?? ''
 
+      const fullName = [d.first_name, d.last_name].filter(Boolean).join(' ') || null
       await supabase.from('users')
         .update({
           email: primaryEmail,
-          full_name: [d.first_name, d.last_name].filter(Boolean).join(' ') || null,
+          full_name: fullName,
           avatar_url: (d.image_url as string) || null,
         })
         .eq('clerk_user_id', d.id as string)
+      await syncSuperAdmin(supabase, d.id as string, primaryEmail, fullName)
       break
     }
 

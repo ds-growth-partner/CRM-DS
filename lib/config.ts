@@ -13,6 +13,11 @@ export const config = {
     calendarId: process.env.GOOGLE_CALENDAR_ID ?? 'primary',
     serviceAccountJson: process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '',
   },
+  // Emails that are auto-registered as super admins on sign-up (comma-separated).
+  superAdminEmails: (process.env.SUPER_ADMIN_EMAILS ?? '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
 } as const
 
 export type Config = typeof config

@@ -19,6 +19,7 @@ import {
   Zap,
   X,
   Send,
+  ShieldCheck,
 } from 'lucide-react'
 import { useSupabase } from '@/providers/supabase-provider'
 import { useRouter } from 'next/navigation'
@@ -39,7 +40,7 @@ const BOTTOM_ITEMS = [
 export function Sidebar() {
   const pathname = usePathname()
   const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useUIStore()
-  const { user, tenant } = useAuth()
+  const { user, tenant, isSuperAdmin } = useAuth()
   const { supabase } = useSupabase()
   const router = useRouter()
 
@@ -204,6 +205,9 @@ export function Sidebar() {
         'py-3 space-y-0.5',
         sidebarCollapsed ? 'px-2 flex flex-col items-center' : 'px-2'
       )}>
+        {isSuperAdmin && (
+          <NavItem href="/admin" label="Super Admin" icon={ShieldCheck} />
+        )}
         {BOTTOM_ITEMS.map(item => (
           <NavItem key={item.href} {...item} />
         ))}
