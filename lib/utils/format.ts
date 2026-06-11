@@ -15,9 +15,11 @@ export function toE164(phone: string): string {
   return `+${cleaned}`
 }
 
-export function getInitials(name: string): string {
+export function getInitials(name: string | null | undefined): string {
+  if (!name) return '?'
   return name
-    .split(' ')
+    .trim()
+    .split(/\s+/)
     .slice(0, 2)
     .map(n => n[0])
     .join('')

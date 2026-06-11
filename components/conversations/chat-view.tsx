@@ -143,7 +143,7 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
               onClick={() => { setShowAgentMenu(v => !v); if (!agents.length) loadAgents() }}
             >
               <UserCheck className="h-3.5 w-3.5" />
-              {assignedAgent ? assignedAgent.full_name.split(' ')[0] : 'Asignar'}
+              {assignedAgent ? (assignedAgent.full_name?.split(' ')[0] ?? 'Agente') : 'Asignar'}
               <ChevronDown className="h-3 w-3 text-muted-foreground" />
             </Button>
             {showAgentMenu && (
@@ -166,7 +166,7 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
                       )}
                     >
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-primary text-[10px] font-semibold shrink-0">
-                        {a.full_name.charAt(0)}
+                        {a.full_name?.charAt(0) ?? '?'}
                       </span>
                       {a.full_name}
                     </button>

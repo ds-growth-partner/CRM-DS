@@ -96,7 +96,7 @@ export function FilterPanel({ filters, onChange, onClose }: FilterPanelProps) {
           label="Asesor"
           value={filters.assigned_to ?? ''}
           onChange={v => set('assigned_to', v)}
-          options={agents.map(a => ({ value: a.id, label: a.full_name }))}
+          options={agents.map(a => ({ value: a.id, label: a.full_name ?? 'Sin nombre' }))}
         />
 
         <FilterSelect
