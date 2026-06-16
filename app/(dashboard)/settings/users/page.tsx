@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useOrganization } from '@clerk/nextjs'
 import { useAuth } from '@/providers/auth-provider'
 import { useSupabase } from '@/providers/supabase-provider'
 import type { User } from '@/lib/types/database'
@@ -22,9 +23,16 @@ const ROLE_COLORS: Record<string, string> = {
   viewer: 'bg-muted text-muted-foreground border-border',
 }
 
+const ROLE_TO_CLERK: Record<'admin' | 'agent' | 'viewer', string> = {
+  admin: 'org:admin',
+  agent: 'org:member',
+  viewer: 'org:viewer',
+}
+
 export default function UsersPage() {
-  const { user: currentUser, tenant } = useAuth()
+  const { user: currentUser } = useAuth()
   const { supabase } = useSupabase()
+  const { organization } = useOrganization()
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -44,16 +52,27 @@ export default function UsersPage() {
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
-    if (!tenant) return
+    if (!organization) {
+      toast.error('No hay organización activa')
+      return
+    }
     setInviting(true)
     try {
-      const { error } = await supabase.auth.admin.inviteUserByEmail(inviteEmail)
-      if (error) throw error
+      // Clerk sends the invitation email; when the invitee accepts, the
+      // organizationMembership.created webhook links them to this tenant.
+      await organization.inviteMember({
+        emailAddress: inviteEmail.trim(),
+        role: ROLE_TO_CLERK[inviteRole],
+      })
       toast.success(`Invitación enviada a ${inviteEmail}`)
       setInviteOpen(false)
       setInviteEmail('')
     } catch (err: unknown) {
-      toast.error((err as Error).message ?? 'Error al invitar usuario')
+      const msg =
+        (err as { errors?: { message: string }[] })?.errors?.[0]?.message ??
+        (err as Error).message ??
+        'Error al invitar usuario'
+      toast.error(msg)
     } finally {
       setInviting(false)
     }

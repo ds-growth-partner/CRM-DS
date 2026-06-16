@@ -2,6 +2,7 @@ import { headers } from 'next/headers'
 import { Webhook } from 'svix'
 import { createAdminClient } from '@/lib/supabase/server'
 import { config } from '@/lib/config'
+import { seedTenantDefaults } from '@/lib/tenant/defaults'
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>
 
@@ -28,6 +29,36 @@ async function syncSuperAdmin(
       .update({ is_active: false })
       .eq('clerk_user_id', clerkUserId)
   }
+}
+
+function slugify(input: string): string {
+  return input.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+}
+
+/**
+ * Upserts a tenant from a Clerk org object and seeds its defaults.
+ * Returns the tenant's UUID. Safe to call from multiple events (idempotent).
+ */
+async function ensureTenant(
+  supabase: SupabaseAdmin,
+  org: { id: string; name?: string; slug?: string; image_url?: string },
+): Promise<string | null> {
+  const name = org.name ?? 'Organización'
+  const slug = org.slug || slugify(name) || org.id
+
+  const { data, error } = await supabase
+    .from('tenants')
+    .upsert(
+      { clerk_org_id: org.id, name, slug, logo_url: org.image_url || null },
+      { onConflict: 'clerk_org_id' },
+    )
+    .select('id')
+    .single()
+
+  if (error || !data) return null
+  await seedTenantDefaults(supabase, data.id)
+  return data.id
 }
 
 type ClerkEvent = {
@@ -104,17 +135,15 @@ export async function POST(req: Request) {
       break
     }
 
-    // ── Organization created → create tenant ──────────────────────────────
+    // ── Organization created → create tenant + seed defaults ──────────────
     case 'organization.created': {
       const d = event.data
-      const slug = (d.slug as string) || (d.name as string).toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
-
-      await supabase.from('tenants').upsert({
-        clerk_org_id: d.id as string,
+      await ensureTenant(supabase, {
+        id: d.id as string,
         name: d.name as string,
-        slug,
-        logo_url: (d.image_url as string) || null,
-      }, { onConflict: 'clerk_org_id' })
+        slug: d.slug as string,
+        image_url: d.image_url as string,
+      })
       break
     }
 
@@ -131,22 +160,41 @@ export async function POST(req: Request) {
     }
 
     // ── Member added to org → link user to tenant ─────────────────────────
+    // Order-independent: Clerk doesn't guarantee organization.created /
+    // user.created arrive before this event, so we defensively upsert both
+    // the tenant and the user row here before linking them.
     case 'organizationMembership.created': {
       const d = event.data
-      const orgId = (d.organization as { id: string }).id
-      const userId = (d.public_user_data as { user_id: string }).user_id
+      const org = d.organization as { id: string; name?: string; slug?: string; image_url?: string }
+      const pud = d.public_user_data as {
+        user_id: string
+        first_name?: string | null
+        last_name?: string | null
+        identifier?: string | null
+        image_url?: string | null
+      }
       const role = mapClerkRole(d.role as string)
 
-      const { data: tenant } = await supabase
-        .from('tenants')
-        .select('id')
-        .eq('clerk_org_id', orgId)
-        .single()
+      // Ensure the tenant exists (and is seeded) even if organization.created lagged.
+      const tenantId = await ensureTenant(supabase, org)
 
-      if (tenant) {
+      // Ensure the user row exists even if user.created lagged.
+      const fullName = [pud.first_name, pud.last_name].filter(Boolean).join(' ') || null
+      await supabase.from('users').upsert({
+        clerk_user_id: pud.user_id,
+        email: pud.identifier ?? '',
+        full_name: fullName,
+        avatar_url: pud.image_url || null,
+        tenant_id: tenantId,
+        role,
+        is_active: true,
+      }, { onConflict: 'clerk_user_id' })
+
+      // Re-affirm the link/role in case the row already existed without them.
+      if (tenantId) {
         await supabase.from('users')
-          .update({ tenant_id: tenant.id, role })
-          .eq('clerk_user_id', userId)
+          .update({ tenant_id: tenantId, role, is_active: true })
+          .eq('clerk_user_id', pud.user_id)
       }
       break
     }

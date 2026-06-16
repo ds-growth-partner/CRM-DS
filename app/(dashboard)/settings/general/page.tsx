@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useOrganization } from '@clerk/nextjs'
 import { useAuth } from '@/providers/auth-provider'
 import { useSupabase } from '@/providers/supabase-provider'
 import { Button } from '@/components/ui/button'
@@ -14,7 +15,9 @@ import { Loader2, Save } from 'lucide-react'
 export default function GeneralSettingsPage() {
   const { tenant, user } = useAuth()
   const { supabase } = useSupabase()
+  const { organization } = useOrganization()
   const [saving, setSaving] = useState(false)
+  const canEditOrg = ['owner', 'admin'].includes(user?.role ?? '')
   const [form, setForm] = useState({
     tenantName: tenant?.name ?? '',
     fullName: user?.full_name ?? '',
@@ -28,14 +31,18 @@ export default function GeneralSettingsPage() {
     e.preventDefault()
     setSaving(true)
     try {
-      if (tenant && ['owner', 'admin'].includes(user?.role ?? '')) {
-        await supabase.from('tenants').update({ name: form.tenantName }).eq('id', tenant.id)
+      if (tenant && canEditOrg && form.tenantName.trim() && form.tenantName !== tenant.name) {
+        // Update Clerk first (source of truth); the org.updated webhook syncs Supabase,
+        // and we also update Supabase directly so the change shows immediately.
+        if (organization) await organization.update({ name: form.tenantName.trim() })
+        await supabase.from('tenants').update({ name: form.tenantName.trim() }).eq('id', tenant.id)
       }
       if (user) {
         await supabase.from('users').update({ full_name: form.fullName }).eq('id', user.id)
       }
       toast.success('Cambios guardados')
-    } catch {
+    } catch (err) {
+      console.error(err)
       toast.error('Error al guardar')
     } finally {
       setSaving(false)

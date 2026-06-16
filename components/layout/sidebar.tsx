@@ -93,6 +93,15 @@ export function Sidebar() {
   }
 
   const userInitial = user?.full_name?.charAt(0)?.toUpperCase() ?? 'U'
+  const orgName = tenant?.name ?? 'DS CRM'
+  const orgInitials =
+    tenant?.name
+      ?.split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w.charAt(0))
+      .join('')
+      .toUpperCase() || 'DS'
 
   return (
     <aside
@@ -119,11 +128,11 @@ export function Sidebar() {
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white glow-sm"
               style={{ background: 'linear-gradient(135deg, oklch(0.62 0.24 264), oklch(0.58 0.24 293))' }}
             >
-              TC
+              {orgInitials}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-bold text-foreground leading-tight">DS CRM</p>
-              <p className="text-[10px] text-muted-foreground truncate">{tenant?.name ?? 'CRM'}</p>
+              <p className="text-sm font-bold text-foreground leading-tight truncate">{orgName}</p>
+              <p className="text-[10px] text-muted-foreground truncate">Powered by DS CRM</p>
             </div>
           </div>
         )}
@@ -132,7 +141,7 @@ export function Sidebar() {
             className="flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold text-white glow-sm"
             style={{ background: 'linear-gradient(135deg, oklch(0.62 0.24 264), oklch(0.58 0.24 293))' }}
           >
-            TC
+            {orgInitials}
           </div>
         )}
         {/* Mobile close button */}
