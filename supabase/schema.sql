@@ -765,3 +765,131 @@ $$;
 
 GRANT EXECUTE ON FUNCTION resolve_tenant_by_phone_number_id(text)
   TO anon, authenticated, service_role;
+
+
+-- ─────────────────────────────────────────────
+-- INBOUND MESSAGE INGESTION (migration: ingest_inbound_whatsapp_message)
+-- ─────────────────────────────────────────────
+-- Single atomic entrypoint the client's n8n calls per inbound WhatsApp message.
+-- It resolves the tenant by phone_number_id, gets-or-creates the contact (by
+-- wa_id) and the conversation (UNIQUE tenant_id,contact_id), inserts the inbound
+-- message, and refreshes the 24h window + denormalized conversation fields.
+-- Idempotent on wa_message_id (re-deliveries don't duplicate or bump unread).
+--
+-- n8n usage (Supabase node / RPC):
+--   POST {SUPABASE_URL}/rest/v1/rpc/ingest_inbound_message
+--   body: { "p_phone_number_id": "...", "p_wa_id": "...", "p_content": "...",
+--           "p_wa_message_id": "...", "p_content_type": "text",
+--           "p_contact_name": "..." }
+--   returns: { tenant_id, contact_id, conversation_id, message_id, duplicate }
+CREATE OR REPLACE FUNCTION ingest_inbound_message(
+  p_phone_number_id text,
+  p_wa_id           text,
+  p_content         text,
+  p_wa_message_id   text   DEFAULT NULL,
+  p_content_type    text   DEFAULT 'text',
+  p_contact_name    text   DEFAULT NULL,
+  p_media_url       text   DEFAULT NULL,
+  p_media_mime_type text   DEFAULT NULL,
+  p_media_filename  text   DEFAULT NULL,
+  p_latitude        double precision DEFAULT NULL,
+  p_longitude       double precision DEFAULT NULL,
+  p_location_name   text   DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_tenant_id       uuid;
+  v_contact_id      uuid;
+  v_conversation_id uuid;
+  v_message_id      uuid;
+  v_first           text;
+  v_last            text;
+  v_preview         text;
+  v_window          timestamptz := now() + interval '24 hours';
+BEGIN
+  SELECT tenant_id INTO v_tenant_id
+  FROM tenant_credentials
+  WHERE phone_number_id = p_phone_number_id
+  LIMIT 1;
+
+  IF v_tenant_id IS NULL THEN
+    RAISE EXCEPTION 'No tenant configured for phone_number_id %', p_phone_number_id
+      USING ERRCODE = 'no_data_found';
+  END IF;
+
+  IF p_contact_name IS NOT NULL AND length(trim(p_contact_name)) > 0 THEN
+    v_first := split_part(trim(p_contact_name), ' ', 1);
+    v_last  := NULLIF(trim(substring(trim(p_contact_name) FROM position(' ' IN trim(p_contact_name)) + 1)), '');
+  END IF;
+
+  INSERT INTO contacts (tenant_id, wa_id, phone, first_name, last_name, source, last_incoming_at)
+  VALUES (v_tenant_id, p_wa_id, p_wa_id, v_first, v_last, 'whatsapp', now())
+  ON CONFLICT (tenant_id, wa_id) DO UPDATE
+    SET last_incoming_at = now(),
+        first_name = COALESCE(contacts.first_name, EXCLUDED.first_name),
+        last_name  = COALESCE(contacts.last_name,  EXCLUDED.last_name)
+  RETURNING id INTO v_contact_id;
+
+  INSERT INTO conversations (tenant_id, contact_id, status, unread_count)
+  VALUES (v_tenant_id, v_contact_id, 'open', 0)
+  ON CONFLICT (tenant_id, contact_id) DO NOTHING;
+
+  SELECT id INTO v_conversation_id
+  FROM conversations
+  WHERE tenant_id = v_tenant_id AND contact_id = v_contact_id;
+
+  INSERT INTO messages (
+    tenant_id, conversation_id, contact_id, content, content_type,
+    direction, sender_type, media_url, media_mime_type, media_filename,
+    latitude, longitude, location_name, wa_message_id, delivery_status
+  )
+  VALUES (
+    v_tenant_id, v_conversation_id, v_contact_id, p_content, p_content_type,
+    'inbound', 'contact', p_media_url, p_media_mime_type, p_media_filename,
+    p_latitude, p_longitude, p_location_name, p_wa_message_id, 'delivered'
+  )
+  ON CONFLICT (wa_message_id) DO NOTHING
+  RETURNING id INTO v_message_id;
+
+  IF v_message_id IS NOT NULL THEN
+    v_preview := COALESCE(
+      NULLIF(left(p_content, 120), ''),
+      CASE p_content_type
+        WHEN 'image'    THEN '📷 Imagen'
+        WHEN 'audio'    THEN '🎤 Audio'
+        WHEN 'video'    THEN '🎬 Video'
+        WHEN 'document' THEN '📄 Documento'
+        WHEN 'sticker'  THEN 'Sticker'
+        WHEN 'location' THEN '📍 Ubicación'
+        ELSE p_content_type
+      END
+    );
+
+    UPDATE conversations
+    SET status                 = 'open',
+        window_expires_at      = v_window,
+        unread_count           = unread_count + 1,
+        last_message_at        = now(),
+        last_message_preview   = v_preview,
+        last_message_direction = 'inbound'
+    WHERE id = v_conversation_id;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'tenant_id',       v_tenant_id,
+    'contact_id',      v_contact_id,
+    'conversation_id', v_conversation_id,
+    'message_id',      v_message_id,
+    'duplicate',       (v_message_id IS NULL)
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION ingest_inbound_message(
+  text, text, text, text, text, text, text, text, text,
+  double precision, double precision, text
+) TO service_role, authenticated, anon;
