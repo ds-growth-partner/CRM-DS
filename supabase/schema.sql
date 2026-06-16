@@ -946,6 +946,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_preview text;
+  v_at      timestamptz := COALESCE(NEW.created_at, now());
 BEGIN
   v_preview := COALESCE(
     NULLIF(left(NEW.content, 120), ''),
@@ -961,17 +962,26 @@ BEGIN
   );
 
   UPDATE conversations
-  SET last_message_at        = COALESCE(NEW.created_at, now()),
+  SET last_message_at        = v_at,
       last_message_preview   = v_preview,
       last_message_direction = NEW.direction,
       status                 = 'open',
       window_expires_at = CASE WHEN NEW.direction = 'inbound'
-                               THEN COALESCE(NEW.created_at, now()) + interval '24 hours'
+                               THEN v_at + interval '24 hours'
                                ELSE window_expires_at END,
       unread_count = CASE WHEN NEW.direction = 'inbound'
                           THEN unread_count + 1
                           ELSE 0 END
   WHERE id = NEW.conversation_id;
+
+  -- Keep the contact's timestamps in sync — last_incoming_at drives the 24h window
+  IF NEW.direction = 'inbound' THEN
+    UPDATE contacts SET last_incoming_at = v_at, updated_at = now()
+    WHERE id = NEW.contact_id;
+  ELSE
+    UPDATE contacts SET last_contacted_at = v_at, updated_at = now()
+    WHERE id = NEW.contact_id;
+  END IF;
 
   RETURN NULL;
 END;

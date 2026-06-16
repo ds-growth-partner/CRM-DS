@@ -21,7 +21,7 @@ import {
   Send,
   ShieldCheck,
 } from 'lucide-react'
-import { useSupabase } from '@/providers/supabase-provider'
+import { useClerk } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 
 const NAV_ITEMS = [
@@ -41,12 +41,11 @@ export function Sidebar() {
   const pathname = usePathname()
   const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useUIStore()
   const { user, tenant, isSuperAdmin } = useAuth()
-  const { supabase } = useSupabase()
+  const { signOut } = useClerk()
   const router = useRouter()
 
   async function handleLogout() {
-    await supabase.auth.signOut()
-    router.push('/login')
+    await signOut(() => router.push('/sign-in'))
   }
 
   function NavItem({ href, label, icon: Icon }: { href: string; label: string; icon: React.ElementType }) {

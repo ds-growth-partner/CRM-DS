@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { ConversationList } from '@/components/conversations/conversation-list'
 import { ChatView } from '@/components/conversations/chat-view'
 import { ContactPanel } from '@/components/conversations/contact-panel'
@@ -22,19 +22,24 @@ export default function ConversationsPage() {
 
   const selectedConversation = conversations.find(c => c.id === selectedId) ?? null
 
-  const handleSelect = useCallback(async (id: string) => {
+  const handleSelect = useCallback((id: string) => {
     setSelectedId(id)
     setMobilePanel('chat')
+  }, [])
 
-    // Mark conversation as read if it has unread messages
-    const conv = conversations.find(c => c.id === id)
+  // Keep the open conversation marked as read: clears the unread bubble on open
+  // and again whenever a new inbound message bumps the count while it's open.
+  useEffect(() => {
+    if (!selectedId) return
+    const conv = conversations.find(c => c.id === selectedId)
     if (conv && conv.unread_count > 0) {
-      await supabase
+      supabase
         .from('conversations')
         .update({ unread_count: 0, updated_at: new Date().toISOString() })
-        .eq('id', id)
+        .eq('id', selectedId)
+        .then(undefined, () => {})
     }
-  }, [conversations, supabase])
+  }, [conversations, selectedId, supabase])
 
   return (
     <div className="flex h-full overflow-hidden">
