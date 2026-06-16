@@ -808,8 +808,6 @@ DECLARE
   v_message_id      uuid;
   v_first           text;
   v_last            text;
-  v_preview         text;
-  v_window          timestamptz := now() + interval '24 hours';
 BEGIN
   SELECT tenant_id INTO v_tenant_id
   FROM tenant_credentials
@@ -834,49 +832,26 @@ BEGIN
         last_name  = COALESCE(contacts.last_name,  EXCLUDED.last_name)
   RETURNING id INTO v_contact_id;
 
-  INSERT INTO conversations (tenant_id, contact_id, status, unread_count)
-  VALUES (v_tenant_id, v_contact_id, 'open', 0)
-  ON CONFLICT (tenant_id, contact_id) DO NOTHING;
-
-  SELECT id INTO v_conversation_id
-  FROM conversations
-  WHERE tenant_id = v_tenant_id AND contact_id = v_contact_id;
-
+  -- conversation_id left NULL → BEFORE trigger attaches it;
+  -- AFTER trigger updates window/preview/unread.
   INSERT INTO messages (
-    tenant_id, conversation_id, contact_id, content, content_type,
-    direction, sender_type, media_url, media_mime_type, media_filename,
-    latitude, longitude, location_name, wa_message_id, delivery_status
+    tenant_id, contact_id, content, content_type, direction, sender_type,
+    media_url, media_mime_type, media_filename, latitude, longitude,
+    location_name, wa_message_id, delivery_status
   )
   VALUES (
-    v_tenant_id, v_conversation_id, v_contact_id, p_content, p_content_type,
-    'inbound', 'contact', p_media_url, p_media_mime_type, p_media_filename,
-    p_latitude, p_longitude, p_location_name, p_wa_message_id, 'delivered'
+    v_tenant_id, v_contact_id, p_content, p_content_type, 'inbound', 'contact',
+    p_media_url, p_media_mime_type, p_media_filename, p_latitude, p_longitude,
+    p_location_name, p_wa_message_id, 'delivered'
   )
   ON CONFLICT (wa_message_id) DO NOTHING
-  RETURNING id INTO v_message_id;
+  RETURNING id, conversation_id INTO v_message_id, v_conversation_id;
 
-  IF v_message_id IS NOT NULL THEN
-    v_preview := COALESCE(
-      NULLIF(left(p_content, 120), ''),
-      CASE p_content_type
-        WHEN 'image'    THEN '📷 Imagen'
-        WHEN 'audio'    THEN '🎤 Audio'
-        WHEN 'video'    THEN '🎬 Video'
-        WHEN 'document' THEN '📄 Documento'
-        WHEN 'sticker'  THEN 'Sticker'
-        WHEN 'location' THEN '📍 Ubicación'
-        ELSE p_content_type
-      END
-    );
-
-    UPDATE conversations
-    SET status                 = 'open',
-        window_expires_at      = v_window,
-        unread_count           = unread_count + 1,
-        last_message_at        = now(),
-        last_message_preview   = v_preview,
-        last_message_direction = 'inbound'
-    WHERE id = v_conversation_id;
+  -- on duplicate delivery the insert is skipped — fetch the existing conversation
+  IF v_conversation_id IS NULL THEN
+    SELECT id INTO v_conversation_id
+    FROM conversations
+    WHERE tenant_id = v_tenant_id AND contact_id = v_contact_id;
   END IF;
 
   RETURN jsonb_build_object(
@@ -893,3 +868,116 @@ GRANT EXECUTE ON FUNCTION ingest_inbound_message(
   text, text, text, text, text, text, text, text, text,
   double precision, double precision, text
 ) TO service_role, authenticated, anon;
+
+
+-- ─────────────────────────────────────────────
+-- AUTO-CONVERSATION (migration: auto_conversation_triggers_and_get_or_create)
+-- ─────────────────────────────────────────────
+-- Conversations are created and maintained automatically at the DB layer, so any
+-- inbound/outbound message insert (from n8n or the app) keeps the CRM in sync.
+--
+--   get_or_create_conversation(tenant_id, contact_id) -> conversation_id
+--     Returns the conversation for a contact, creating it if missing. Call it
+--     after resolving the contact so the n8n flow has a real conversation_id.
+--
+--   BEFORE INSERT trigger (messages_attach_conversation):
+--     If a message has no conversation_id, it auto-creates/attaches the
+--     conversation from (tenant_id, contact_id). n8n only needs to send
+--     tenant_id + contact_id on the message row.
+--
+--   AFTER INSERT trigger (messages_touch_conversation):
+--     Refreshes last_message_at / preview / direction, the 24h window
+--     (inbound only), and unread_count (+1 inbound, reset to 0 on outbound).
+
+CREATE OR REPLACE FUNCTION get_or_create_conversation(
+  p_tenant_id  uuid,
+  p_contact_id uuid
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_id uuid;
+BEGIN
+  INSERT INTO conversations (tenant_id, contact_id, status, unread_count)
+  VALUES (p_tenant_id, p_contact_id, 'open', 0)
+  ON CONFLICT (tenant_id, contact_id) DO NOTHING;
+
+  SELECT id INTO v_id
+  FROM conversations
+  WHERE tenant_id = p_tenant_id AND contact_id = p_contact_id;
+
+  RETURN v_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_or_create_conversation(uuid, uuid)
+  TO service_role, authenticated, anon;
+
+CREATE OR REPLACE FUNCTION messages_attach_conversation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.conversation_id IS NULL THEN
+    IF NEW.tenant_id IS NULL OR NEW.contact_id IS NULL THEN
+      RAISE EXCEPTION 'messages.conversation_id is null and tenant_id/contact_id missing — cannot auto-create conversation';
+    END IF;
+    NEW.conversation_id := get_or_create_conversation(NEW.tenant_id, NEW.contact_id);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS messages_attach_conversation_trg ON messages;
+CREATE TRIGGER messages_attach_conversation_trg
+  BEFORE INSERT ON messages
+  FOR EACH ROW EXECUTE FUNCTION messages_attach_conversation();
+
+CREATE OR REPLACE FUNCTION messages_touch_conversation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_preview text;
+BEGIN
+  v_preview := COALESCE(
+    NULLIF(left(NEW.content, 120), ''),
+    CASE NEW.content_type
+      WHEN 'image'    THEN '📷 Imagen'
+      WHEN 'audio'    THEN '🎤 Audio'
+      WHEN 'video'    THEN '🎬 Video'
+      WHEN 'document' THEN '📄 Documento'
+      WHEN 'sticker'  THEN 'Sticker'
+      WHEN 'location' THEN '📍 Ubicación'
+      ELSE NEW.content_type
+    END
+  );
+
+  UPDATE conversations
+  SET last_message_at        = COALESCE(NEW.created_at, now()),
+      last_message_preview   = v_preview,
+      last_message_direction = NEW.direction,
+      status                 = 'open',
+      window_expires_at = CASE WHEN NEW.direction = 'inbound'
+                               THEN COALESCE(NEW.created_at, now()) + interval '24 hours'
+                               ELSE window_expires_at END,
+      unread_count = CASE WHEN NEW.direction = 'inbound'
+                          THEN unread_count + 1
+                          ELSE 0 END
+  WHERE id = NEW.conversation_id;
+
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS messages_touch_conversation_trg ON messages;
+CREATE TRIGGER messages_touch_conversation_trg
+  AFTER INSERT ON messages
+  FOR EACH ROW EXECUTE FUNCTION messages_touch_conversation();
