@@ -2,11 +2,14 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSupabase } from '@/providers/supabase-provider'
+import { useAuth } from '@/providers/auth-provider'
 import type { ConversationWithContact } from '@/lib/types/database'
 import type { ConversationFilters } from '@/lib/types/shared'
 
 export function useRealtimeConversations(filters: ConversationFilters = {}) {
   const { supabase } = useSupabase()
+  const { tenant } = useAuth()
+  const tenantId = tenant?.id
   const [conversations, setConversations] = useState<ConversationWithContact[]>([])
   const [loading, setLoading] = useState(true)
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
@@ -102,28 +105,46 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
   useEffect(() => {
     loadConversations()
 
+    // Realtime postgres_changes on RLS-protected tables only deliver when the
+    // subscription has a filter — an unfiltered subscription receives nothing
+    // (this is why new conversations never showed up live). Scope every binding
+    // to the tenant, which also keeps events isolated per tenant.
+    if (!tenantId) return
+
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current)
     }
 
+    const f = `tenant_id=eq.${tenantId}`
     const channel = supabase
-      .channel(`conversations-list-${Date.now()}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => loadConversations())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, () => loadConversations())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => loadConversations())
-      .subscribe()
+      .channel(`conversations-list-${tenantId}-${Date.now()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations', filter: f }, () => loadConversations())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts', filter: f }, () => loadConversations())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: f }, () => loadConversations())
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('[useRealtimeConversations] realtime channel status:', status)
+        }
+      })
 
     channelRef.current = channel
 
+    // Safety net: if the tab was backgrounded and missed events, refresh on focus.
+    const onFocus = () => { if (!document.hidden) loadConversations() }
+    document.addEventListener('visibilitychange', onFocus)
+    window.addEventListener('focus', onFocus)
+
     return () => {
       supabase.removeChannel(channel)
+      document.removeEventListener('visibilitychange', onFocus)
+      window.removeEventListener('focus', onFocus)
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current)
         retryTimeoutRef.current = null
       }
       retryCountRef.current = 0
     }
-  }, [loadConversations, supabase])
+  }, [loadConversations, supabase, tenantId])
 
   return { conversations, loading }
 }

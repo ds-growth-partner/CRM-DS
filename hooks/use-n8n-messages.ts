@@ -98,10 +98,11 @@ export function useN8nMessages(
           event: 'INSERT',
           schema: 'public',
           table: 'n8n_chat_histories',
+          // RLS-protected tables only deliver realtime when the subscription is filtered.
+          filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
           const incoming = payload.new as N8nChatHistory
-          // Filter by session_id in JS (avoids issues with @ in Realtime filter)
           if (incoming.session_id !== sessionId) return
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const content = (incoming.message as any)?.content as string | undefined
