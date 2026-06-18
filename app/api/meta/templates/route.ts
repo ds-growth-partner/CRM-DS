@@ -1,22 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAuthContext } from '@/lib/supabase/auth-context'
-import { config } from '@/lib/config'
+
+// Reads the tenant's OWN Meta credentials (never global env) so each client
+// syncs its own WhatsApp Business Account.
+async function getTenantMeta(tenantId: string) {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('tenant_credentials')
+    .select('meta_access_token, waba_id')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  return {
+    accessToken: data?.meta_access_token?.trim() || '',
+    wabaId: data?.waba_id?.trim() || '',
+  }
+}
 
 export async function GET() {
   const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  const { accessToken, wabaId } = await getTenantMeta(ctx.tenantId)
 
-  if (!config.meta.accessToken || !config.meta.wabaId) {
-    const { data } = await admin.from('hsm_templates').select('*').eq('tenant_id', ctx.tenantId).order('created_at', { ascending: false })
-    return NextResponse.json({ templates: data ?? [] })
+  // No per-tenant Meta creds in the CRM → read what the tenant's n8n already
+  // synced into hsm_templates (this is the default in the per-client-n8n model).
+  if (!accessToken || !wabaId) {
+    const { data } = await admin
+      .from('hsm_templates')
+      .select('*')
+      .eq('tenant_id', ctx.tenantId)
+      .order('created_at', { ascending: false })
+    return NextResponse.json({ templates: data ?? [], source: 'db' })
   }
 
+  // Tenant has its own Meta creds → sync live from its WABA.
   const metaRes = await fetch(
-    `https://graph.facebook.com/v19.0/${config.meta.wabaId}/message_templates?fields=name,status,language,category,components&limit=100`,
-    { headers: { Authorization: `Bearer ${config.meta.accessToken}` } }
+    `https://graph.facebook.com/v19.0/${wabaId}/message_templates?fields=name,status,language,category,components&limit=100`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
   )
 
   if (!metaRes.ok) {
@@ -47,7 +69,7 @@ export async function GET() {
     await admin.from('hsm_templates').upsert(templates, { onConflict: 'tenant_id,meta_template_id' })
   }
 
-  return NextResponse.json({ templates })
+  return NextResponse.json({ templates, source: 'meta' })
 }
 
 export async function POST(request: NextRequest) {
@@ -57,18 +79,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  if (!config.meta.accessToken || !config.meta.wabaId) {
-    return NextResponse.json({ error: 'Meta credentials not configured' }, { status: 400 })
+  const { accessToken, wabaId } = await getTenantMeta(ctx.tenantId)
+  if (!accessToken || !wabaId) {
+    return NextResponse.json(
+      { error: 'Este cliente no tiene credenciales de Meta configuradas. Crea la plantilla desde su n8n o configura meta_access_token + waba_id en /admin.' },
+      { status: 400 }
+    )
   }
 
   const body = await request.json()
 
   const metaRes = await fetch(
-    `https://graph.facebook.com/v19.0/${config.meta.wabaId}/message_templates`,
+    `https://graph.facebook.com/v19.0/${wabaId}/message_templates`,
     {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${config.meta.accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
