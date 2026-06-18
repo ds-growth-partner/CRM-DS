@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAuthContext } from '@/lib/supabase/auth-context'
+import { getN8nClientForTenant } from '@/lib/n8n/client'
 import { config } from '@/lib/config'
 
 export async function POST(request: NextRequest) {
@@ -12,11 +13,15 @@ export async function POST(request: NextRequest) {
   const { action, appointment: appt } = body
 
   let resultData = null
+  // Normalize the operation so the n8n webhook path matches what actually happened
+  // (delete must fire calendar-delete, not calendar-update).
+  const op: 'create' | 'update' | 'delete' =
+    action === 'delete' ? 'delete' : action === 'update' ? 'update' : 'create'
 
-  if (action === 'delete') {
-    const { error } = await admin.from('appointments').delete().eq('id', appt.id)
+  if (op === 'delete') {
+    const { error } = await admin.from('appointments').delete().eq('id', appt.id).eq('tenant_id', ctx.tenantId)
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-  } else if (action === 'update') {
+  } else if (op === 'update') {
     const { data, error } = await admin.from('appointments').update({
       title: appt.title,
       description: appt.description,
@@ -27,7 +32,7 @@ export async function POST(request: NextRequest) {
       timezone: appt.timezone ?? 'America/Bogota',
       location: appt.location,
       status: appt.status ?? 'scheduled',
-    }).eq('id', appt.id).select().single()
+    }).eq('id', appt.id).eq('tenant_id', ctx.tenantId).select().single()
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     resultData = data
   } else {
@@ -43,37 +48,45 @@ export async function POST(request: NextRequest) {
       location: appt.location,
       status: 'scheduled',
       created_by: 'manual',
-      created_by_user_id: ctx.userId,
     }).select().single()
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     resultData = data
   }
 
-  const n8nUrl = process.env.N8N_BASE_URL
-  if (n8nUrl) {
-    const actionType = appt?.id ? 'update' : 'create'
-    const webhookPath = actionType === 'create' ? 'calendar-create' : 'calendar-update'
+  // ── Sync to Google Calendar via the *tenant's own* n8n ──────────────────────
+  // Each client's calendar webhooks fire against their own n8n + Google Calendar.
+  const { data: cred } = await admin
+    .from('tenant_credentials')
+    .select('n8n_base_url, google_calendar_id')
+    .eq('tenant_id', ctx.tenantId)
+    .maybeSingle()
 
+  const hasN8n = !!(cred?.n8n_base_url?.trim() || process.env.N8N_BASE_URL)
+  if (hasN8n) {
     let contact = null
     if (appt.contact_id) {
-      const { data } = await admin.from('contacts').select('first_name, last_name, email, phone').eq('id', appt.contact_id).single()
+      const { data } = await admin
+        .from('contacts')
+        .select('first_name, last_name, email, phone')
+        .eq('id', appt.contact_id)
+        .single()
       contact = data
     }
 
     const payload = {
-      action: actionType,
+      action: op,
       appointment: { ...appt, ...(resultData || {}) },
       contact,
       tenant_id: ctx.tenantId,
-      google_calendar_id: config.google.calendarId,
+      google_calendar_id: cred?.google_calendar_id || config.google.calendarId,
       timestamp: new Date().toISOString(),
     }
 
-    const { n8nClient } = await import('@/lib/n8n/client')
     try {
-      await n8nClient.post(webhookPath, payload)
+      const client = await getN8nClientForTenant(ctx.tenantId)
+      await client.post(`calendar-${op}`, payload)
     } catch (e) {
-      console.error(`Error triggering n8n ${webhookPath}:`, e)
+      console.error(`Error triggering n8n calendar-${op}:`, e)
     }
   }
 
