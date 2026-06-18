@@ -101,6 +101,7 @@ export type Database = {
           tenant_id: string
           name: string
           color: string
+          position: number
           created_at: string
         }
         Insert: Omit<Database['public']['Tables']['tags']['Row'], 'id' | 'created_at'>

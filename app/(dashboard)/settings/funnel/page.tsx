@@ -8,9 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { Plus, Trash2, GripVertical, Loader2 } from 'lucide-react'
-
-const DEFAULT_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
+import { Plus, Loader2 } from 'lucide-react'
+import { SortableColorList, PALETTE } from '@/components/settings/sortable-color-list'
 
 export default function FunnelPage() {
   const { tenant, user } = useAuth()
@@ -18,7 +17,7 @@ export default function FunnelPage() {
   const [stages, setStages] = useState<FunnelStage[]>([])
   const [loading, setLoading] = useState(true)
   const [newName, setNewName] = useState('')
-  const [newColor, setNewColor] = useState(DEFAULT_COLORS[0])
+  const [newColor, setNewColor] = useState(PALETTE[0])
   const [saving, setSaving] = useState(false)
   const canEdit = ['owner', 'admin'].includes(user?.role ?? '')
 
@@ -29,13 +28,15 @@ export default function FunnelPage() {
     setLoading(false)
   }
 
-  useEffect(() => { loadStages() }, [tenant])
+  useEffect(() => { loadStages() }, [tenant]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     if (!newName.trim() || !tenant) return
     setSaving(true)
-    const slug = newName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+    const base = newName.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+    const slug = `${base || 'fase'}-${Date.now().toString(36)}`
     const { error } = await supabase.from('funnel_stages').insert({
       tenant_id: tenant.id,
       name: newName.trim(),
@@ -48,17 +49,42 @@ export default function FunnelPage() {
     setSaving(false)
   }
 
+  async function handleReorder(ids: string[]) {
+    setStages(prev => ids.map((id, i) => ({ ...prev.find(s => s.id === id)!, position: i })))
+    try {
+      await Promise.all(ids.map((id, i) => supabase.from('funnel_stages').update({ position: i }).eq('id', id)))
+    } catch {
+      toast.error('Error al reordenar'); loadStages()
+    }
+  }
+
+  async function handleRename(id: string, name: string) {
+    setStages(prev => prev.map(s => s.id === id ? { ...s, name } : s))
+    const { error } = await supabase.from('funnel_stages').update({ name }).eq('id', id)
+    if (error) { toast.error(error.message); loadStages() }
+  }
+
+  async function handleRecolor(id: string, color: string) {
+    setStages(prev => prev.map(s => s.id === id ? { ...s, color } : s))
+    const { error } = await supabase.from('funnel_stages').update({ color }).eq('id', id)
+    if (error) { toast.error(error.message); loadStages() }
+  }
+
   async function handleDelete(id: string) {
+    const prev = stages
+    setStages(s => s.filter(stage => stage.id !== id))
     const { error } = await supabase.from('funnel_stages').delete().eq('id', id)
-    if (error) toast.error(error.message)
-    else { toast.success('Fase eliminada'); setStages(s => s.filter(stage => stage.id !== id)) }
+    if (error) { toast.error(error.message); setStages(prev) }
+    else toast.success('Fase eliminada')
   }
 
   return (
     <div className="space-y-6 max-w-xl">
       <div>
         <h1 className="text-lg font-semibold">Embudo de ventas</h1>
-        <p className="text-sm text-muted-foreground">Configura las fases del embudo de tu proceso comercial</p>
+        <p className="text-sm text-muted-foreground">
+          Configura las fases. Arrastra para reordenar, haz clic en el nombre para renombrar y en el color para cambiarlo.
+        </p>
       </div>
 
       {canEdit && (
@@ -70,7 +96,7 @@ export default function FunnelPage() {
           <div className="space-y-1.5">
             <Label>Color</Label>
             <div className="flex gap-1.5">
-              {DEFAULT_COLORS.map(c => (
+              {PALETTE.slice(0, 6).map(c => (
                 <button
                   key={c}
                   type="button"
@@ -87,37 +113,28 @@ export default function FunnelPage() {
         </form>
       )}
 
-      <div className="space-y-2">
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Cargando...</p>
-        ) : stages.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No hay fases todavía</p>
-        ) : (
-          stages.map((stage, idx) => (
-            <div key={stage.id} className="flex items-center gap-3 p-3 border border-border rounded-lg bg-card hover:bg-muted/30 transition-colors">
-              <GripVertical className="h-4 w-4 text-muted-foreground/50 cursor-grab" />
-              <span
-                className="h-5 w-5 rounded-full shrink-0"
-                style={{ backgroundColor: stage.color }}
-              />
-              <span className="flex-1 text-sm font-medium">{stage.name}</span>
-              <span className="text-xs text-muted-foreground">Pos. {stage.position}</span>
-              {stage.is_won && <span className="text-xs text-emerald-500">Ganado</span>}
-              {stage.is_lost && <span className="text-xs text-red-500">Perdido</span>}
-              {canEdit && !stage.is_default && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                  onClick={() => handleDelete(stage.id)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              )}
-            </div>
-          ))
-        )}
-      </div>
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Cargando...</p>
+      ) : stages.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No hay fases todavía</p>
+      ) : (
+        <SortableColorList
+          items={stages}
+          canEdit={canEdit}
+          onReorder={handleReorder}
+          onRename={handleRename}
+          onRecolor={handleRecolor}
+          onDelete={handleDelete}
+          canDelete={(s) => !s.is_default}
+          renderMeta={(s) => (
+            <>
+              {s.is_won && <span className="text-[10px] text-emerald-500 font-medium shrink-0">Ganado</span>}
+              {s.is_lost && <span className="text-[10px] text-red-500 font-medium shrink-0">Perdido</span>}
+              {s.is_default && <span className="text-[10px] text-muted-foreground shrink-0">Fija</span>}
+            </>
+          )}
+        />
+      )}
     </div>
   )
 }
