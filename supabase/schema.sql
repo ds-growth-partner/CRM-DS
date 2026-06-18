@@ -245,10 +245,34 @@ CREATE TABLE IF NOT EXISTS messages (
 -- ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS n8n_chat_histories (
   id          BIGSERIAL PRIMARY KEY,
-  session_id  TEXT NOT NULL,
+  session_id  TEXT NOT NULL,           -- convention: '<tenant_id>:<wa_id>' (tenant-scoped)
   message     JSONB NOT NULL,
+  tenant_id   UUID,                    -- derived from session_id prefix by trigger (see below)
   time_stamp  TIMESTAMPTZ DEFAULT now()
 );
+
+-- Derive tenant_id from the session_id prefix so the bot's memory is isolated
+-- per tenant even though the LangChain node only writes (session_id, message).
+CREATE OR REPLACE FUNCTION n8n_chat_set_tenant()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.tenant_id IS NULL AND position(':' in NEW.session_id) > 0 THEN
+    BEGIN
+      NEW.tenant_id := split_part(NEW.session_id, ':', 1)::uuid;
+    EXCEPTION WHEN others THEN
+      NEW.tenant_id := NULL;
+    END;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS n8n_chat_set_tenant_trg ON n8n_chat_histories;
+CREATE TRIGGER n8n_chat_set_tenant_trg
+  BEFORE INSERT ON n8n_chat_histories
+  FOR EACH ROW EXECUTE FUNCTION n8n_chat_set_tenant();
 
 
 -- ─────────────────────────────────────────────
@@ -648,9 +672,16 @@ CREATE POLICY "credentials_write" ON tenant_credentials
     is_super_admin() OR (tenant_id = get_tenant_id() AND has_role('owner'))
   );
 
--- n8n_chat_histories (service_role only, no tenant_id)
-CREATE POLICY "n8n_chat_all" ON n8n_chat_histories
-  FOR ALL USING (true);
+-- n8n_chat_histories — tenant-isolated via the tenant_id derived from session_id.
+-- n8n connects to Postgres as the table owner (direct connection) which bypasses
+-- RLS, so its reads/writes are unaffected; this only constrains the CRM API.
+CREATE POLICY "n8n_chat_tenant" ON n8n_chat_histories
+  FOR ALL
+  USING (is_super_admin() OR tenant_id = get_tenant_id())
+  WITH CHECK (is_super_admin() OR tenant_id = get_tenant_id());
+
+CREATE INDEX IF NOT EXISTS idx_n8n_chat_tenant_session
+  ON n8n_chat_histories (tenant_id, session_id);
 
 -- All other tables: tenant-scoped, agents and above
 CREATE POLICY "funnel_stages_read"  ON funnel_stages  FOR SELECT USING (is_super_admin() OR tenant_id = get_tenant_id());

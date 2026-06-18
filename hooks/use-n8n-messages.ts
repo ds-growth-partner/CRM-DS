@@ -7,10 +7,17 @@ import type { N8nChatHistory } from '@/lib/types/database'
 const PAGE_SIZE = 60
 
 /**
- * Loads messages from n8n_chat_histories for a given contact wa_id.
- * session_id = wa_id directamente (ej: "573001234567"), sin sufijos.
+ * Loads messages from n8n_chat_histories for a given contact.
+ *
+ * session_id is tenant-scoped: '<tenant_id>:<wa_id>' (e.g.
+ * "126b2385-…:573001234567"). This MUST match the sessionKey configured in the
+ * tenant's n8n Chat Memory node — otherwise the same phone writing to two clients
+ * would share memory. Pass the tenant id so the key is built consistently.
  */
-export function useN8nMessages(waId: string | null | undefined) {
+export function useN8nMessages(
+  waId: string | null | undefined,
+  tenantId: string | null | undefined,
+) {
   const { supabase } = useSupabase()
   const [messages, setMessages] = useState<N8nChatHistory[]>([])
   const [loading, setLoading] = useState(true)
@@ -21,8 +28,8 @@ export function useN8nMessages(waId: string | null | undefined) {
   const prevSessionIdRef = useRef<string | null>(null)
   const initializedRef = useRef(false)
 
-  // session_id es el número de WhatsApp directamente (ej: "573001234567")
-  const sessionId = waId ?? null
+  // Tenant-scoped key: '<tenant_id>:<wa_id>'
+  const sessionId = waId && tenantId ? `${tenantId}:${waId}` : null
 
   const loadInitial = useCallback(async (sid: string | null) => {
     if (!sid) {
