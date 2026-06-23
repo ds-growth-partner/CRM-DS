@@ -12,6 +12,7 @@ import {
   Calendar,
   FileText,
   BarChart3,
+  Package,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -27,6 +28,7 @@ import { useRouter } from 'next/navigation'
 const NAV_ITEMS = [
   { href: '/conversations', label: 'Conversaciones', icon: MessageSquare },
   { href: '/contacts',      label: 'Contactos',      icon: Users },
+  { href: '/services',      label: 'Servicios',      icon: Package },
   { href: '/calendar',      label: 'Calendario',     icon: Calendar },
   { href: '/templates',      label: 'Plantillas',     icon: FileText },
   { href: '/campaigns',     label: 'Campañas',       icon: Send },

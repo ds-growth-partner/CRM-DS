@@ -417,10 +417,50 @@ export type Database = {
           options: Json | null
           is_required: boolean
           position: number
+          // When set, the field's value lives in this real column of `contacts`
+          // (e.g. 'first_name'). When null, it lives in contacts.custom_fields jsonb.
+          mapped_column: string | null
           created_at: string
         }
         Insert: Omit<Database['public']['Tables']['custom_field_definitions']['Row'], 'id' | 'created_at'>
         Update: Partial<Database['public']['Tables']['custom_field_definitions']['Insert']>
+      }
+      services: {
+        Row: {
+          id: string
+          tenant_id: string
+          name: string
+          description: string | null
+          price: number
+          currency: string
+          duration_minutes: number | null
+          is_active: boolean
+          position: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['services']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['services']['Insert']>
+      }
+      deals: {
+        Row: {
+          id: string
+          tenant_id: string
+          contact_id: string
+          service_id: string | null
+          name: string
+          description: string | null
+          price: number
+          currency: string
+          quantity: number
+          status: 'pending' | 'paid' | 'completed' | 'cancelled'
+          sold_at: string
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['deals']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['deals']['Insert']>
       }
     }
     Functions: {
@@ -459,6 +499,12 @@ export type CannedResponse = Tables<'canned_responses'>
 export type CustomFieldDefinition = Tables<'custom_field_definitions'>
 export type N8nChatHistory = Tables<'n8n_chat_histories'>
 export type Message = Tables<'messages'>
+export type Service = Tables<'services'>
+export type Deal = Tables<'deals'>
+
+export type DealWithService = Deal & {
+  service?: Service | null
+}
 
 // Extended types with joins
 export type ContactWithDetails = Contact & {

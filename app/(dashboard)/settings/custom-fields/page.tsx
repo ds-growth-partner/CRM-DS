@@ -103,6 +103,14 @@ export default function CustomFieldsPage() {
     else { toast.success('Campo eliminado'); setFields(f => f.filter(x => x.id !== id)) }
   }
 
+  async function handleRename(id: string, label: string) {
+    const v = label.trim()
+    if (!v) return
+    setFields(f => f.map(x => x.id === id ? { ...x, label: v } : x))
+    const { error } = await supabase.from('custom_field_definitions').update({ label: v }).eq('id', id)
+    if (error) { toast.error(error.message); loadFields() }
+  }
+
   async function moveUp(index: number) {
     if (index === 0) return
     const updated = [...fields]
@@ -263,7 +271,20 @@ export default function CustomFieldsPage() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{field.label}</span>
+                    {canEdit ? (
+                      <input
+                        defaultValue={field.label}
+                        key={field.label}
+                        onBlur={e => { if (e.target.value.trim() && e.target.value !== field.label) handleRename(field.id, e.target.value) }}
+                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                        className="text-sm font-medium bg-transparent border-b border-transparent hover:border-border focus:border-primary focus:outline-none min-w-0"
+                      />
+                    ) : (
+                      <span className="text-sm font-medium">{field.label}</span>
+                    )}
+                    {field.mapped_column && (
+                      <span className="text-[10px] text-muted-foreground/70 font-medium shrink-0">campo base</span>
+                    )}
                     {field.is_required && (
                       <span className="text-[10px] text-destructive font-medium">Requerido</span>
                     )}

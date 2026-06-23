@@ -11,6 +11,7 @@ import { useAuth } from '@/providers/auth-provider'
 
 import { MessageBubble } from '@/components/conversations/message-bubble'
 import { Composer } from '@/components/conversations/composer'
+import { ContactDeals } from '@/components/contacts/contact-deals'
 import { TagBadge } from '@/components/shared/tag-badge'
 import { LeadScoreBar } from '@/components/shared/lead-score-bar'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -26,16 +27,22 @@ import { cn } from '@/lib/utils'
 import type { FunnelStage, Json, PhaseTransition, Conversation, Appointment } from '@/lib/types/database'
 import {
   ArrowLeft, Phone, Mail, Building2, MapPin, Globe, Calendar,
-  Copy, Pencil, Plus, X, Check, ChevronDown, Loader2,
+  Pencil, Plus, X, Check, ChevronDown, Loader2,
   MessageSquare, Activity, Bot, User as UserIcon, Clock,
-  ArrowRight, Sparkles, Hash,
+  ArrowRight, Sparkles, Hash, ShoppingBag,
 } from 'lucide-react'
 
 interface ContactDetailViewProps {
   contactId: string
 }
 
-type EditableField = 'first_name' | 'last_name' | 'phone' | 'email' | 'company' | 'city'
+type EditableField = 'first_name' | 'last_name'
+
+// Icons for the unified contact-info list (mapped columns get a meaningful icon,
+// everything else falls back to a generic hash).
+const FIELD_ICONS: Record<string, React.ElementType> = {
+  phone: Phone, email: Mail, company: Building2, city: MapPin,
+}
 
 // ── Section header ─────────────────────────────────────────────────────────────
 
@@ -109,10 +116,11 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [fieldValue, setFieldValue] = useState('')
   const [notes, setNotes] = useState('')
-  const [customFields, setCustomFields] = useState<Record<string, unknown>>({})
+  // Input buffer for every field in the unified list, keyed by field_key.
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
-  const [mobileTab, setMobileTab] = useState<'info' | 'chat' | 'activity' | 'appointments'>('info')
+  const [mobileTab, setMobileTab] = useState<'info' | 'chat' | 'activity' | 'appointments' | 'ventas'>('info')
 
   // ── Data hooks ──────────────────────────────────────────────────────────────
   const { contact, loading } = useRealtimeContact(contactId)
@@ -166,11 +174,21 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
   }, [supabase, contactId])
 
   // ── Sync contact local state ────────────────────────────────────────────────
+  // Build the input buffer for every field definition: mapped fields read from the
+  // real contacts column, the rest from contacts.custom_fields (jsonb).
   useEffect(() => {
     if (!contact) return
     setNotes(contact.notes ?? '')
-    setCustomFields((contact.custom_fields as Record<string, unknown>) ?? {})
-  }, [contact?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+    const cf = (contact.custom_fields as Record<string, unknown>) ?? {}
+    const c = contact as unknown as Record<string, unknown>
+    const vals: Record<string, string> = {}
+    for (const def of customFieldDefs) {
+      vals[def.field_key] = def.mapped_column
+        ? String(c[def.mapped_column] ?? '')
+        : String(cf[def.field_key] ?? '')
+    }
+    setFieldValues(vals)
+  }, [contact?.id, customFieldDefs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Scroll to bottom on new messages ───────────────────────────────────────
   useEffect(() => {
@@ -214,12 +232,21 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
   }
 
   async function saveCustomField(key: string, value: string) {
-    const updated = { ...customFields, [key]: value || undefined }
+    const base = (contact?.custom_fields as Record<string, unknown>) ?? {}
+    const updated = { ...base, [key]: value || undefined }
     const { error } = await supabase
       .from('contacts')
       .update({ custom_fields: updated as Json, updated_at: new Date().toISOString() })
       .eq('id', contactId)
     if (error) toast.error('Error al guardar campo')
+  }
+
+  // Unified save for any field in the contact-info list: mapped fields write to the
+  // real column, everything else writes to contacts.custom_fields.
+  function saveFieldValue(def: { field_key: string; mapped_column: string | null }, value: string) {
+    setFieldValues(p => ({ ...p, [def.field_key]: value }))
+    if (def.mapped_column) saveField(def.mapped_column, value)
+    else saveCustomField(def.field_key, value)
   }
 
   function startEdit(field: EditableField, current: string) {
@@ -288,66 +315,6 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
   }
 
   // ── Info panel content (shared between desktop left panel & mobile info tab) ──
-
-  function InfoRow({
-    field, icon: Icon, label, value,
-  }: { field: EditableField; icon: React.ElementType; label: string; value?: string | null }) {
-    const isEditing = editingField === field
-    if (!isEditing && !value) {
-      return (
-        <button
-          onClick={() => startEdit(field, '')}
-          className="flex items-center gap-2.5 py-1.5 w-full text-left text-muted-foreground/40 hover:text-muted-foreground transition-colors"
-        >
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/30 shrink-0">
-            <Icon className="h-3.5 w-3.5" />
-          </div>
-          <span className="text-xs italic">Añadir {label.toLowerCase()}</span>
-        </button>
-      )
-    }
-    return (
-      <div className="flex items-start gap-2.5 py-1.5 group">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/8 text-primary/70 shrink-0 mt-0.5">
-          <Icon className="h-3.5 w-3.5" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] text-muted-foreground leading-tight">{label}</p>
-          {isEditing ? (
-            <div className="flex items-center gap-1 mt-0.5">
-              <Input
-                autoFocus
-                value={fieldValue}
-                onChange={e => setFieldValue(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditingField(null) }}
-                onBlur={commitEdit}
-                className="h-7 text-xs bg-muted/40 border-primary/40"
-              />
-              {savingField === field && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />}
-            </div>
-          ) : (
-            <div className="flex items-center gap-1">
-              <p className="text-xs text-foreground font-medium truncate flex-1">{value}</p>
-              <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity shrink-0 gap-0.5">
-                <button
-                  onClick={() => { navigator.clipboard.writeText(value ?? ''); toast.success('Copiado') }}
-                  className="p-0.5 rounded text-muted-foreground hover:text-primary"
-                >
-                  <Copy className="h-3 w-3" />
-                </button>
-                <button
-                  onClick={() => startEdit(field, value ?? '')}
-                  className="p-0.5 rounded text-muted-foreground hover:text-primary"
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
 
   const InfoPanelContent = (
     <div className="px-4 pb-8 space-y-5">
@@ -527,80 +494,67 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
         </div>
       </div>
 
-      {/* Información de contacto */}
-      <div className="rounded-xl border border-border bg-card/50 p-4 space-y-1">
-        <SectionHeader label="Información de contacto" />
-        <InfoRow field="phone"   icon={Phone}    label="Teléfono" value={contact.phone}   />
-        <InfoRow field="email"   icon={Mail}     label="Email"    value={contact.email}   />
-        <InfoRow field="company" icon={Building2} label="Empresa" value={contact.company} />
-        <InfoRow field="city"    icon={MapPin}   label="Ciudad"   value={contact.city}    />
-      </div>
-
-      {/* Campos personalizados */}
+      {/* Información del contacto — todos los campos en una sola lista uniforme.
+          nombre/apellido se editan arriba en el avatar, así que se excluyen aquí. */}
       {customFieldDefs.length > 0 && (
         <div className="rounded-xl border border-border bg-card/50 p-4 space-y-3">
-          <SectionHeader label="Campos personalizados" />
+          <SectionHeader label="Información del contacto" />
           <div className="space-y-3">
-            {customFieldDefs.map(def => {
-              const val = String(customFields[def.field_key] ?? '')
-              return (
-                <div key={def.id} className="space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    <Hash className="h-3 w-3 text-muted-foreground/50" />
-                    <p className="text-[11px] text-muted-foreground">{def.label}</p>
+            {customFieldDefs
+              .filter(def => def.mapped_column !== 'first_name' && def.mapped_column !== 'last_name')
+              .map(def => {
+                const val = fieldValues[def.field_key] ?? ''
+                const Icon = (def.mapped_column && FIELD_ICONS[def.mapped_column]) || Hash
+                return (
+                  <div key={def.id} className="space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <Icon className="h-3 w-3 text-muted-foreground/50" />
+                      <p className="text-[11px] text-muted-foreground">{def.label}</p>
+                    </div>
+                    {def.field_type === 'select' && def.options ? (
+                      <select
+                        value={val}
+                        onChange={e => saveFieldValue(def, e.target.value)}
+                        className="w-full h-8 rounded-lg border border-border bg-muted/30 text-sm px-2.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                      >
+                        <option value="">— seleccionar —</option>
+                        {(def.options as string[]).map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    ) : def.field_type === 'boolean' ? (
+                      <button
+                        onClick={() => saveFieldValue(def, val === 'true' ? 'false' : 'true')}
+                        className={cn(
+                          'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
+                          val === 'true' ? 'bg-primary' : 'bg-muted-foreground/30'
+                        )}
+                      >
+                        <span className={cn(
+                          'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                          val === 'true' ? 'translate-x-4' : 'translate-x-0.5'
+                        )} />
+                      </button>
+                    ) : (
+                      <Input
+                        type={
+                          def.field_type === 'number' ? 'number'
+                          : def.field_type === 'date' ? 'date'
+                          : def.field_type === 'email' ? 'email'
+                          : def.field_type === 'phone' ? 'tel'
+                          : def.field_type === 'url' ? 'url'
+                          : 'text'
+                        }
+                        value={val}
+                        onChange={e => setFieldValues(p => ({ ...p, [def.field_key]: e.target.value }))}
+                        onBlur={e => saveFieldValue(def, e.target.value)}
+                        placeholder={`Añadir ${def.label.toLowerCase()}...`}
+                        className="h-8 text-sm bg-muted/30"
+                      />
+                    )}
                   </div>
-                  {def.field_type === 'select' && def.options ? (
-                    <select
-                      value={val}
-                      onChange={e => {
-                        const v = e.target.value
-                        setCustomFields(p => ({ ...p, [def.field_key]: v }))
-                        saveCustomField(def.field_key, v)
-                      }}
-                      className="w-full h-8 rounded-lg border border-border bg-muted/30 text-sm px-2.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                    >
-                      <option value="">— seleccionar —</option>
-                      {(def.options as string[]).map(opt => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </select>
-                  ) : def.field_type === 'boolean' ? (
-                    <button
-                      onClick={() => {
-                        const v = val === 'true' ? 'false' : 'true'
-                        setCustomFields(p => ({ ...p, [def.field_key]: v }))
-                        saveCustomField(def.field_key, v)
-                      }}
-                      className={cn(
-                        'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
-                        val === 'true' ? 'bg-primary' : 'bg-muted-foreground/30'
-                      )}
-                    >
-                      <span className={cn(
-                        'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                        val === 'true' ? 'translate-x-4' : 'translate-x-0.5'
-                      )} />
-                    </button>
-                  ) : (
-                    <Input
-                      type={
-                        def.field_type === 'number' ? 'number'
-                        : def.field_type === 'date' ? 'date'
-                        : def.field_type === 'email' ? 'email'
-                        : def.field_type === 'phone' ? 'tel'
-                        : def.field_type === 'url' ? 'url'
-                        : 'text'
-                      }
-                      value={val}
-                      onChange={e => setCustomFields(p => ({ ...p, [def.field_key]: e.target.value }))}
-                      onBlur={e => saveCustomField(def.field_key, e.target.value)}
-                      placeholder={`Añadir ${def.label.toLowerCase()}...`}
-                      className="h-8 text-sm bg-muted/30"
-                    />
-                  )}
-                </div>
-              )
-            })}
+                )
+              })}
           </div>
         </div>
       )}
@@ -798,6 +752,10 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
     </div>
   )
 
+  // ── Ventas (negocios) panel content ──────────────────────────────────────────
+
+  const VentasPanelContent = <ContactDeals contactId={contactId} />
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
@@ -842,6 +800,7 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
         {[
           { id: 'info', label: 'Info', icon: UserIcon },
           { id: 'chat', label: 'Chat', icon: MessageSquare },
+          { id: 'ventas', label: 'Ventas', icon: ShoppingBag },
           { id: 'activity', label: 'Actividad', icon: Activity },
           { id: 'appointments', label: 'Citas', icon: Calendar },
         ].map(tab => (
@@ -871,6 +830,11 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
         {mobileTab === 'chat' && (
           <div className="flex-1 overflow-hidden">
             {ChatPanelContent}
+          </div>
+        )}
+        {mobileTab === 'ventas' && (
+          <div className="flex-1 overflow-hidden">
+            {VentasPanelContent}
           </div>
         )}
         {mobileTab === 'activity' && (
@@ -913,6 +877,13 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
                   )}
                 </TabsTrigger>
                 <TabsTrigger
+                  value="ventas"
+                  className="h-9 px-3 text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent rounded-none gap-1.5"
+                >
+                  <ShoppingBag className="h-3.5 w-3.5" />
+                  Ventas
+                </TabsTrigger>
+                <TabsTrigger
                   value="activity"
                   className="h-9 px-3 text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent rounded-none gap-1.5"
                 >
@@ -941,6 +912,10 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
 
             <TabsContent value="chat" className="flex-1 overflow-hidden mt-0">
               {ChatPanelContent}
+            </TabsContent>
+
+            <TabsContent value="ventas" className="flex-1 overflow-hidden mt-0">
+              {VentasPanelContent}
             </TabsContent>
 
             <TabsContent value="activity" className="flex-1 overflow-hidden mt-0">

@@ -31,6 +31,20 @@ export function truncate(str: string, length: number): string {
   return str.slice(0, length) + '...'
 }
 
+export function formatMoney(amount: number | null | undefined, currency = 'COP'): string {
+  const value = amount ?? 0
+  try {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: value % 1 === 0 ? 0 : 2,
+    }).format(value)
+  } catch {
+    // Unknown currency code → fall back to a plain number + code
+    return `${value.toLocaleString('es-CO')} ${currency}`
+  }
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`

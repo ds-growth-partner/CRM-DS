@@ -517,15 +517,20 @@ CREATE TRIGGER canned_responses_updated_at
 -- CUSTOM FIELD DEFINITIONS
 -- ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS custom_field_definitions (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  field_key    TEXT NOT NULL,
-  label        TEXT NOT NULL,
-  field_type   TEXT DEFAULT 'text' CHECK (field_type IN ('text','number','date','boolean','select')),
-  options      JSONB,
-  is_required  BOOLEAN DEFAULT false,
-  position     INTEGER DEFAULT 0,
-  created_at   TIMESTAMPTZ DEFAULT now(),
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  field_key     TEXT NOT NULL,
+  label         TEXT NOT NULL,
+  field_type    TEXT DEFAULT 'text' CHECK (field_type IN ('text','number','date','boolean','select','url','email','phone')),
+  options       JSONB,
+  is_required   BOOLEAN DEFAULT false,
+  position      INTEGER DEFAULT 0,
+  -- When set, this field's value lives in a real `contacts` column (first_name,
+  -- last_name, phone, email, company, city). When null, it lives in
+  -- contacts.custom_fields (jsonb). Lets nombre/email/empresa/etc. be ordinary,
+  -- editable, deletable field definitions while n8n/search/{{vars}} keep working.
+  mapped_column TEXT,
+  created_at    TIMESTAMPTZ DEFAULT now(),
   UNIQUE (tenant_id, field_key)
 );
 
@@ -1022,3 +1027,68 @@ DROP TRIGGER IF EXISTS messages_touch_conversation_trg ON messages;
 CREATE TRIGGER messages_touch_conversation_trg
   AFTER INSERT ON messages
   FOR EACH ROW EXECUTE FUNCTION messages_touch_conversation();
+
+
+-- ============================================================
+-- SERVICIOS + VENTAS (NEGOCIOS)
+-- Catálogo de servicios por tenant + ventas asociadas a cada
+-- contacto (historial de compras / pedidos). El precio de cada
+-- venta es editable (promos/descuentos) y se puede registrar un
+-- servicio "personalizado" fuera del catálogo (service_id NULL).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS services (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  name             TEXT NOT NULL,
+  description      TEXT,
+  price            NUMERIC(12,2) NOT NULL DEFAULT 0,
+  currency         TEXT NOT NULL DEFAULT 'COP',
+  duration_minutes INTEGER,
+  is_active        BOOLEAN NOT NULL DEFAULT true,
+  position         INTEGER NOT NULL DEFAULT 0,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS services_tenant_idx ON services(tenant_id, position);
+
+CREATE TABLE IF NOT EXISTS deals (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  contact_id   UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  service_id   UUID REFERENCES services(id) ON DELETE SET NULL,
+  name         TEXT NOT NULL,                 -- snapshot del nombre del servicio
+  description  TEXT,
+  price        NUMERIC(12,2) NOT NULL DEFAULT 0,
+  currency     TEXT NOT NULL DEFAULT 'COP',
+  quantity     INTEGER NOT NULL DEFAULT 1,
+  status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','paid','completed','cancelled')),
+  sold_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  notes        TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS deals_contact_idx ON deals(contact_id);
+CREATE INDEX IF NOT EXISTS deals_tenant_idx  ON deals(tenant_id);
+
+CREATE TRIGGER services_updated_at BEFORE UPDATE ON services
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER deals_updated_at BEFORE UPDATE ON deals
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+ALTER TABLE services ENABLE ROW LEVEL SECURITY;
+ALTER TABLE deals    ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY services_read ON services FOR SELECT
+  USING (is_super_admin() OR tenant_id = get_tenant_id());
+CREATE POLICY services_write ON services FOR ALL
+  USING (is_super_admin() OR (tenant_id = get_tenant_id() AND has_role('admin')))
+  WITH CHECK (is_super_admin() OR (tenant_id = get_tenant_id() AND has_role('admin')));
+
+CREATE POLICY deals_read ON deals FOR SELECT
+  USING (is_super_admin() OR tenant_id = get_tenant_id());
+CREATE POLICY deals_write ON deals FOR ALL
+  USING (is_super_admin() OR (tenant_id = get_tenant_id() AND has_role('agent')))
+  WITH CHECK (is_super_admin() OR (tenant_id = get_tenant_id() AND has_role('agent')));
+
+ALTER PUBLICATION supabase_realtime ADD TABLE deals;
+ALTER PUBLICATION supabase_realtime ADD TABLE services;

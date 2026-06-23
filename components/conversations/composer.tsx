@@ -11,7 +11,7 @@ import { useSupabase } from '@/providers/supabase-provider'
 import { useCannedResponses } from '@/hooks/use-canned-responses'
 import { useCustomFieldDefinitions } from '@/hooks/use-custom-field-definitions'
 import { EmojiPicker } from '@/components/ui/emoji-picker'
-import type { ContactForConversation } from '@/lib/types/database'
+import type { ContactForConversation, CustomFieldDefinition } from '@/lib/types/database'
 
 interface ComposerProps {
   conversationId: string
@@ -23,12 +23,17 @@ interface ComposerProps {
   onMessageSent?: () => void
 }
 
-// Reemplaza {{field_key}} con el valor del contacto
+// Reemplaza {{field_key}} con el valor del contacto.
+// Resuelve tanto los nombres clave de las definiciones (p. ej. {{nombre}}, que puede
+// estar mapeado a la columna first_name) como los built-ins legacy ({{first_name}}…)
+// para que plantillas/respuestas antiguas sigan funcionando.
 function resolveVariables(
   text: string,
   contact: ContactForConversation | null | undefined,
-  customValues: Record<string, unknown>
+  defs: CustomFieldDefinition[]
 ): string {
+  const c = contact as unknown as Record<string, unknown> | null | undefined
+  const customValues = (contact?.custom_fields as Record<string, unknown>) ?? {}
   return text.replace(/\{\{(\w+)\}\}/g, (_, key) => {
     const builtIn: Record<string, string | null | undefined> = {
       first_name: contact?.first_name,
@@ -40,6 +45,11 @@ function resolveVariables(
       city: contact?.city,
     }
     if (key in builtIn) return builtIn[key] ?? `{{${key}}}`
+    const def = defs.find(d => d.field_key === key)
+    if (def) {
+      const v = def.mapped_column ? c?.[def.mapped_column] : customValues[def.field_key]
+      return v != null && v !== '' ? String(v) : `{{${key}}}`
+    }
     const custom = customValues[key]
     return custom !== undefined && custom !== null ? String(custom) : `{{${key}}}`
   })
@@ -69,10 +79,6 @@ export function Composer({
   const { isOpen: windowOpen } = useWindow24h(lastIncomingAt)
   const { search: searchCanned } = useCannedResponses()
   const { fields: customFieldDefs } = useCustomFieldDefinitions()
-
-  const customValues: Record<string, unknown> = contact?.custom_fields
-    ? (contact.custom_fields as Record<string, unknown>)
-    : {}
 
   // Detectar "/" para canned responses y "{{" para variables
   function handleTextChange(val: string) {
@@ -115,14 +121,10 @@ export function Composer({
     textareaRef.current?.focus()
   }
 
+  // full_name no tiene definición propia; el resto de campos (nombre, teléfono,
+  // email, etc.) salen de las definiciones para no duplicar el built-in legacy.
   const ALL_VARIABLES = [
-    { key: 'first_name', label: 'Nombre' },
-    { key: 'last_name', label: 'Apellido' },
     { key: 'full_name', label: 'Nombre completo' },
-    { key: 'phone', label: 'Teléfono' },
-    { key: 'email', label: 'Correo' },
-    { key: 'company', label: 'Empresa' },
-    { key: 'city', label: 'Ciudad' },
     ...customFieldDefs.map(f => ({ key: f.field_key, label: f.label })),
   ]
 
@@ -159,7 +161,7 @@ export function Composer({
     if ((!hasText && !hasFiles) || sending) return
 
     setSending(true)
-    const resolved = hasText ? resolveVariables(text.trim(), contact, customValues) : ''
+    const resolved = hasText ? resolveVariables(text.trim(), contact, customFieldDefs) : ''
     if (hasText) onOptimisticMessage?.(resolved)
     setText('')
     setAttachments([])
