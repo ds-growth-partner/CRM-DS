@@ -2,6 +2,7 @@
 
 import { useDraggable } from '@dnd-kit/core'
 import type { ContactWithDetails } from '@/lib/types/database'
+import { contactName } from '@/lib/utils/contact-fields'
 import { TagBadge } from '@/components/shared/tag-badge'
 import { LeadScoreBar } from '@/components/shared/lead-score-bar'
 import { cn } from '@/lib/utils'
@@ -29,7 +30,8 @@ export function KanbanCard({ contact, isOverlay, isGhost, isSelected, onToggle }
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined
 
-  const fullName = `${contact.first_name} ${contact.last_name ?? ''}`.trim()
+  const cfields = contact.fields ?? {}
+  const fullName = contactName(cfields)
   const tags = contact.tags ?? []
 
   // Original card while being dragged: keep space but become invisible
@@ -104,17 +106,17 @@ export function KanbanCard({ contact, isOverlay, isGhost, isSelected, onToggle }
         </p>
       </Link>
 
-      {contact.company && (
+      {cfields.empresa && (
         <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
           <Building2 className="h-3 w-3 shrink-0" />
-          <span className="truncate">{contact.company}</span>
+          <span className="truncate">{cfields.empresa}</span>
         </div>
       )}
 
-      {contact.phone && (
+      {cfields.telefono && (
         <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
           <Phone className="h-3 w-3 shrink-0" />
-          {contact.phone}
+          {cfields.telefono}
         </div>
       )}
 

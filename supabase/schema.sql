@@ -138,16 +138,12 @@ CREATE TABLE IF NOT EXISTS tags (
 -- ─────────────────────────────────────────────
 -- CONTACTS
 -- ─────────────────────────────────────────────
+-- contacts solo guarda datos de sistema. Nombre, email, teléfono, empresa y
+-- demás campos de perfil viven en contact_field_values (una fila por campo).
 CREATE TABLE IF NOT EXISTS contacts (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  first_name          TEXT,
-  last_name           TEXT,
-  phone               TEXT,
-  email               TEXT,
-  company             TEXT,
   job_title           TEXT,
-  city                TEXT,
   country             TEXT,
   wa_id               TEXT,
   funnel_stage_id     UUID REFERENCES funnel_stages(id) ON DELETE SET NULL,
@@ -157,7 +153,6 @@ CREATE TABLE IF NOT EXISTS contacts (
   ai_active           BOOLEAN DEFAULT false,
   last_incoming_at    TIMESTAMPTZ,
   last_contacted_at   TIMESTAMPTZ,
-  custom_fields       JSONB DEFAULT '{}',
   notes               TEXT,
   created_at          TIMESTAMPTZ DEFAULT now(),
   updated_at          TIMESTAMPTZ DEFAULT now()
@@ -165,6 +160,25 @@ CREATE TABLE IF NOT EXISTS contacts (
 
 CREATE TRIGGER contacts_updated_at
   BEFORE UPDATE ON contacts
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Todos los campos de perfil del contacto (una fila por campo). El field_key
+-- referencia custom_field_definitions.field_key. n8n y el CRM solo escriben aquí
+-- para cambiar cualquier campo. field_key base: nombre, apellido, telefono, email,
+-- empresa, ciudad, documento.
+CREATE TABLE IF NOT EXISTS contact_field_values (
+  contact_id  UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  field_key   TEXT NOT NULL,
+  value       TEXT,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (contact_id, field_key)
+);
+CREATE INDEX IF NOT EXISTS cfv_tenant_key_idx ON contact_field_values(tenant_id, field_key);
+CREATE INDEX IF NOT EXISTS cfv_search_idx      ON contact_field_values(tenant_id, field_key, value);
+
+CREATE TRIGGER contact_field_values_updated_at
+  BEFORE UPDATE ON contact_field_values
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 
@@ -525,14 +539,17 @@ CREATE TABLE IF NOT EXISTS custom_field_definitions (
   options       JSONB,
   is_required   BOOLEAN DEFAULT false,
   position      INTEGER DEFAULT 0,
-  -- When set, this field's value lives in a real `contacts` column (first_name,
-  -- last_name, phone, email, company, city). When null, it lives in
-  -- contacts.custom_fields (jsonb). Lets nombre/email/empresa/etc. be ordinary,
-  -- editable, deletable field definitions while n8n/search/{{vars}} keep working.
-  mapped_column TEXT,
   created_at    TIMESTAMPTZ DEFAULT now(),
   UNIQUE (tenant_id, field_key)
 );
+-- RLS de contact_field_values (lectura por tenant; escritura agente+).
+ALTER TABLE contact_field_values ENABLE ROW LEVEL SECURITY;
+CREATE POLICY cfv_read ON contact_field_values FOR SELECT
+  USING (is_super_admin() OR tenant_id = get_tenant_id());
+CREATE POLICY cfv_write ON contact_field_values FOR ALL
+  USING (is_super_admin() OR (tenant_id = get_tenant_id() AND has_role('agent')))
+  WITH CHECK (is_super_admin() OR (tenant_id = get_tenant_id() AND has_role('agent')));
+ALTER PUBLICATION supabase_realtime ADD TABLE contact_field_values;
 
 
 -- ─────────────────────────────────────────────

@@ -14,14 +14,15 @@ import { AIMindPanel } from './ai-mind-panel'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
-  Phone, Mail, Building2, MapPin, Copy, Plus, X, Check,
+  Phone, Mail, Building2, MapPin, Hash, Plus, X, Check,
   ChevronDown, Calendar, Globe, Pencil, Loader2, ArrowLeft,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatDate } from '@/lib/utils/date'
 import { useSupabase } from '@/providers/supabase-provider'
 import { useAuth } from '@/providers/auth-provider'
-import type { FunnelStage, Json } from '@/lib/types/database'
+import type { FunnelStage } from '@/lib/types/database'
+import { contactName, contactInitials } from '@/lib/utils/contact-fields'
 import { cn } from '@/lib/utils'
 
 interface ContactPanelProps {
@@ -30,7 +31,11 @@ interface ContactPanelProps {
   onClose?: () => void
 }
 
-type EditableField = 'first_name' | 'last_name' | 'phone' | 'email' | 'company' | 'city'
+type EditableField = 'nombre' | 'apellido'
+
+const FIELD_ICONS: Record<string, React.ElementType> = {
+  telefono: Phone, email: Mail, empresa: Building2, ciudad: MapPin,
+}
 
 export function ContactPanel({ contactId, conversationId, onClose }: ContactPanelProps) {
   const { contact, loading } = useRealtimeContact(contactId)
@@ -52,15 +57,18 @@ export function ContactPanel({ contactId, conversationId, onClose }: ContactPane
   const [notes, setNotes] = useState('')
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Custom fields — always editable
-  const [customFields, setCustomFields] = useState<Record<string, unknown>>({})
+  // Todos los campos viven en contact_field_values → contact.fields
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
 
   // Initialise local state when contact changes (not on every realtime update)
   useEffect(() => {
     if (!contact) return
     setNotes(contact.notes ?? '')
-    setCustomFields((contact.custom_fields as Record<string, unknown>) ?? {})
-  }, [contact?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+    const f = contact.fields ?? {}
+    const vals: Record<string, string> = {}
+    for (const def of customFieldDefs) vals[def.field_key] = f[def.field_key] ?? ''
+    setFieldValues(vals)
+  }, [contact?.id, contact?.fields, customFieldDefs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!tenant) return
@@ -74,13 +82,19 @@ export function ContactPanel({ contactId, conversationId, onClose }: ContactPane
 
   // ── Save helpers ──────────────────────────────────────────────────────────
 
-  async function saveField(field: string, value: string | null) {
-    setSavingField(field)
-    const { error } = await supabase
-      .from('contacts')
-      .update({ [field]: value || null, updated_at: new Date().toISOString() })
-      .eq('id', contactId)
-    if (error) toast.error('Error al guardar')
+  async function saveFieldValue(fieldKey: string, value: string) {
+    setFieldValues(p => ({ ...p, [fieldKey]: value }))
+    if (!tenant) return
+    setSavingField(fieldKey)
+    const v = value.trim()
+    const { error } = v === ''
+      ? await supabase.from('contact_field_values').delete()
+          .eq('contact_id', contactId).eq('field_key', fieldKey)
+      : await supabase.from('contact_field_values').upsert(
+          { contact_id: contactId, tenant_id: tenant.id, field_key: fieldKey, value: v },
+          { onConflict: 'contact_id,field_key' },
+        )
+    if (error) toast.error('Error al guardar campo')
     setSavingField(null)
   }
 
@@ -107,15 +121,6 @@ export function ContactPanel({ contactId, conversationId, onClose }: ContactPane
     }, 800)
   }
 
-  async function saveCustomField(key: string, value: string) {
-    const updated = { ...customFields, [key]: value || undefined }
-    const { error } = await supabase
-      .from('contacts')
-      .update({ custom_fields: updated as Json, updated_at: new Date().toISOString() })
-      .eq('id', contactId)
-    if (error) toast.error('Error al guardar campo')
-  }
-
   function startEdit(field: EditableField, current: string) {
     setEditingField(field)
     setFieldValue(current)
@@ -126,7 +131,7 @@ export function ContactPanel({ contactId, conversationId, onClose }: ContactPane
     const field = editingField
     const value = fieldValue
     setEditingField(null)
-    await saveField(field, value)
+    await saveFieldValue(field, value)
   }
 
   // ── Loading / empty ───────────────────────────────────────────────────────
@@ -144,7 +149,9 @@ export function ContactPanel({ contactId, conversationId, onClose }: ContactPane
 
   if (!contact) return null
 
-  const fullName = `${contact.first_name} ${contact.last_name ?? ''}`.trim()
+  const cfields = contact.fields ?? {}
+  const fullNameRaw = contactName(cfields)
+  const fullName = fullNameRaw === 'Sin nombre' ? '' : fullNameRaw
   const assignedTagIds = new Set((contact.tags ?? []).map(t => t.id))
   const currentStage = stages.find(s => s.id === contact.funnel_stage_id)
 
@@ -152,73 +159,6 @@ export function ContactPanel({ contactId, conversationId, onClose }: ContactPane
 
   function SectionHeader({ label }: { label: string }) {
     return <p className="section-label px-0.5">{label}</p>
-  }
-
-  function InfoRow({
-    field, icon: Icon, label, value,
-  }: { field: EditableField; icon: React.ElementType; label: string; value?: string | null }) {
-    const isEditing = editingField === field
-
-    if (!isEditing && !value) {
-      return (
-        <button
-          onClick={() => startEdit(field, '')}
-          className="flex items-center gap-2 py-1.5 w-full text-left text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-        >
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-muted/20 shrink-0">
-            <Icon className="h-3 w-3" />
-          </div>
-          <span className="text-xs italic">Añadir {label.toLowerCase()}</span>
-        </button>
-      )
-    }
-
-    return (
-      <div className="flex items-start gap-2.5 py-1.5 group">
-        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/8 text-primary/70 shrink-0 mt-0.5">
-          <Icon className="h-3 w-3" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] text-muted-foreground leading-tight">{label}</p>
-          {isEditing ? (
-            <div className="flex items-center gap-1 mt-0.5">
-              <Input
-                autoFocus
-                value={fieldValue}
-                onChange={e => setFieldValue(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') commitEdit()
-                  if (e.key === 'Escape') setEditingField(null)
-                }}
-                onBlur={commitEdit}
-                className="h-6 text-xs bg-muted/40 border-primary/40"
-              />
-              {savingField === field && (
-                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center gap-1">
-              <p className="text-xs text-foreground font-medium truncate flex-1">{value}</p>
-              <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity shrink-0 gap-0.5">
-                <button
-                  onClick={() => { navigator.clipboard.writeText(value ?? ''); toast.success('Copiado') }}
-                  className="p-0.5 rounded text-muted-foreground hover:text-primary"
-                >
-                  <Copy className="h-2.5 w-2.5" />
-                </button>
-                <button
-                  onClick={() => startEdit(field, value ?? '')}
-                  className="p-0.5 rounded text-muted-foreground hover:text-primary"
-                >
-                  <Pencil className="h-2.5 w-2.5" />
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    )
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -249,26 +189,26 @@ export function ContactPanel({ contactId, conversationId, onClose }: ContactPane
               <div className="flex flex-col items-center text-center pt-1">
                 <div className="relative mb-2">
                   <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary/30 to-violet-500/30 text-primary text-xl font-bold ring-2 ring-primary/20">
-                    {fullName.charAt(0).toUpperCase()}
+                    {contactInitials(cfields)}
                   </div>
                   <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-emerald-400 ring-2 ring-sidebar status-online" />
                 </div>
 
-                {editingField === 'first_name' || editingField === 'last_name' ? (
+                {editingField === 'nombre' || editingField === 'apellido' ? (
                   <div className="flex gap-1 w-full">
                     <Input
-                      autoFocus={editingField === 'first_name'}
-                      value={editingField === 'first_name' ? fieldValue : contact.first_name}
-                      onChange={e => editingField === 'first_name' && setFieldValue(e.target.value)}
+                      autoFocus={editingField === 'nombre'}
+                      value={editingField === 'nombre' ? fieldValue : (cfields.nombre ?? '')}
+                      onChange={e => editingField === 'nombre' && setFieldValue(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditingField(null) }}
                       onBlur={commitEdit}
                       className="h-7 text-xs text-center"
                       placeholder="Nombre"
                     />
                     <Input
-                      autoFocus={editingField === 'last_name'}
-                      value={editingField === 'last_name' ? fieldValue : (contact.last_name ?? '')}
-                      onChange={e => editingField === 'last_name' && setFieldValue(e.target.value)}
+                      autoFocus={editingField === 'apellido'}
+                      value={editingField === 'apellido' ? fieldValue : (cfields.apellido ?? '')}
+                      onChange={e => editingField === 'apellido' && setFieldValue(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditingField(null) }}
                       onBlur={commitEdit}
                       className="h-7 text-xs text-center"
@@ -277,17 +217,17 @@ export function ContactPanel({ contactId, conversationId, onClose }: ContactPane
                   </div>
                 ) : (
                   <div className="flex items-center gap-1.5 group">
-                    <p className="text-sm font-semibold text-foreground leading-tight">{fullName}</p>
+                    <p className="text-sm font-semibold text-foreground leading-tight">{fullName || 'Sin nombre'}</p>
                     <button
-                      onClick={() => startEdit('first_name', contact.first_name)}
+                      onClick={() => startEdit('nombre', cfields.nombre ?? '')}
                       className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
                     >
                       <Pencil className="h-3 w-3" />
                     </button>
                   </div>
                 )}
-                {contact.company && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5">{contact.company}</p>
+                {cfields.empresa && (
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{cfields.empresa}</p>
                 )}
               </div>
 
@@ -421,59 +361,54 @@ export function ContactPanel({ contactId, conversationId, onClose }: ContactPane
                 </div>
               </div>
 
-              {/* Información de contacto — click-to-edit por campo */}
-              <div className="rounded-xl border border-border bg-card/50 p-3 space-y-0.5">
-                <SectionHeader label="Información" />
-                <InfoRow field="phone"   icon={Phone}    label="Teléfono" value={contact.phone}   />
-                <InfoRow field="email"   icon={Mail}     label="Email"    value={contact.email}   />
-                <InfoRow field="company" icon={Building2} label="Empresa" value={contact.company} />
-                <InfoRow field="city"    icon={MapPin}   label="Ciudad"   value={contact.city}    />
-              </div>
-
-              {/* Campos personalizados — siempre editables */}
+              {/* Información del contacto — todos los campos en una lista uniforme
+                  (nombre/apellido se editan arriba en el avatar) */}
               {customFieldDefs.length > 0 && (
                 <div className="rounded-xl border border-border bg-card/50 p-3 space-y-2">
-                  <SectionHeader label="Campos personalizados" />
+                  <SectionHeader label="Información" />
                   <div className="space-y-2">
-                    {customFieldDefs.map(def => {
-                      const val = String(customFields[def.field_key] ?? '')
-                      return (
-                        <div key={def.id} className="space-y-0.5">
-                          <p className="text-[10px] text-muted-foreground">{def.label}</p>
-                          {def.field_type === 'select' && def.options ? (
-                            <select
-                              value={val}
-                              onChange={e => {
-                                const v = e.target.value
-                                setCustomFields(p => ({ ...p, [def.field_key]: v }))
-                                saveCustomField(def.field_key, v)
-                              }}
-                              className="w-full h-7 rounded-lg border border-border bg-muted/30 text-xs px-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                            >
-                              <option value="">— seleccionar —</option>
-                              {(def.options as string[]).map(opt => (
-                                <option key={opt} value={opt}>{opt}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <Input
-                              type={
-                                def.field_type === 'number' ? 'number'
-                                : def.field_type === 'date' ? 'date'
-                                : def.field_type === 'email' ? 'email'
-                                : def.field_type === 'phone' ? 'tel'
-                                : 'text'
-                              }
-                              value={val}
-                              onChange={e => setCustomFields(p => ({ ...p, [def.field_key]: e.target.value }))}
-                              onBlur={e => saveCustomField(def.field_key, e.target.value)}
-                              placeholder={`Añadir ${def.label.toLowerCase()}...`}
-                              className="h-7 text-xs bg-muted/30"
-                            />
-                          )}
-                        </div>
-                      )
-                    })}
+                    {customFieldDefs
+                      .filter(def => def.field_key !== 'nombre' && def.field_key !== 'apellido')
+                      .map(def => {
+                        const val = fieldValues[def.field_key] ?? ''
+                        const Icon = FIELD_ICONS[def.field_key] || Hash
+                        return (
+                          <div key={def.id} className="space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <Icon className="h-3 w-3 text-muted-foreground/50" />
+                              <p className="text-[10px] text-muted-foreground">{def.label}</p>
+                            </div>
+                            {def.field_type === 'select' && def.options ? (
+                              <select
+                                value={val}
+                                onChange={e => saveFieldValue(def.field_key, e.target.value)}
+                                className="w-full h-7 rounded-lg border border-border bg-muted/30 text-xs px-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                              >
+                                <option value="">— seleccionar —</option>
+                                {(def.options as string[]).map(opt => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <Input
+                                type={
+                                  def.field_type === 'number' ? 'number'
+                                  : def.field_type === 'date' ? 'date'
+                                  : def.field_type === 'email' ? 'email'
+                                  : def.field_type === 'phone' ? 'tel'
+                                  : def.field_type === 'url' ? 'url'
+                                  : 'text'
+                                }
+                                value={val}
+                                onChange={e => setFieldValues(p => ({ ...p, [def.field_key]: e.target.value }))}
+                                onBlur={e => saveFieldValue(def.field_key, e.target.value)}
+                                placeholder={`Añadir ${def.label.toLowerCase()}...`}
+                                className="h-7 text-xs bg-muted/30"
+                              />
+                            )}
+                          </div>
+                        )
+                      })}
                   </div>
                 </div>
               )}

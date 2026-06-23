@@ -301,25 +301,38 @@ export function ImportContactsDialog({ open, onOpenChange, onImported }: Props) 
     const total = rows.length
     setProgress({ total, current: 0, created: 0, updated: 0, failed: 0 })
 
-    // Bulk fetch existing contacts to detect duplicates
+    // Las columnas de perfil del CSV se mapean a field_key de contact_field_values;
+    // wa_id/notes/job_title/country siguen siendo columnas de contacts.
+    const FIELD_MAP: Record<string, string> = {
+      first_name: 'nombre', last_name: 'apellido', phone: 'telefono',
+      email: 'email', company: 'empresa', city: 'ciudad',
+    }
+    const SYSTEM_KEYS = new Set(['wa_id', 'notes', 'job_title', 'country'])
+    function split(row: Record<string, string>) {
+      const sys: Record<string, string> = {}
+      const fields: Record<string, string> = {}
+      for (const [k, v] of Object.entries(row)) {
+        if (FIELD_MAP[k]) fields[FIELD_MAP[k]] = v
+        else if (SYSTEM_KEYS.has(k)) sys[k] = v
+      }
+      return { sys, fields }
+    }
+
+    // Detecta duplicados por teléfono/email buscando en contact_field_values
     const phones = [...new Set(rows.map(r => r.phone).filter(Boolean))]
     const emails = [...new Set(rows.map(r => r.email).filter(Boolean))]
 
     const [phoneRes, emailRes] = await Promise.all([
       phones.length
-        ? supabase.from('contacts').select('id, phone').in('phone', phones)
-        : Promise.resolve({ data: [] as { id: string; phone: string }[] }),
+        ? supabase.from('contact_field_values').select('contact_id, value').eq('tenant_id', tenantId).eq('field_key', 'telefono').in('value', phones)
+        : Promise.resolve({ data: [] as { contact_id: string; value: string }[] }),
       emails.length
-        ? supabase.from('contacts').select('id, email').in('email', emails)
-        : Promise.resolve({ data: [] as { id: string; email: string }[] }),
+        ? supabase.from('contact_field_values').select('contact_id, value').eq('tenant_id', tenantId).eq('field_key', 'email').in('value', emails)
+        : Promise.resolve({ data: [] as { contact_id: string; value: string }[] }),
     ])
 
-    const phoneMap = new Map(
-      (phoneRes.data ?? []).map((c: { id: string; phone: string }) => [c.phone, c.id])
-    )
-    const emailMap = new Map(
-      (emailRes.data ?? []).map((c: { id: string; email: string }) => [c.email, c.id])
-    )
+    const phoneMap = new Map((phoneRes.data ?? []).map((c: { contact_id: string; value: string }) => [c.value, c.contact_id]))
+    const emailMap = new Map((emailRes.data ?? []).map((c: { contact_id: string; value: string }) => [c.value, c.contact_id]))
 
     let created = 0
     let updated = 0
@@ -333,27 +346,38 @@ export function ImportContactsDialog({ open, onOpenChange, onImported }: Props) 
           (row.phone && phoneMap.get(row.phone)) ||
           (row.email && emailMap.get(row.email)) ||
           null
+        const { sys, fields } = split(row)
 
+        let cid: string
         if (existingId) {
-          // Sync: update only the fields present in CSV (never overwrite with empty)
-          const { error } = await supabase
-            .from('contacts')
-            .update(row)
-            .eq('id', existingId)
-          if (error) throw error
-          affectedIds.push(existingId)
+          if (Object.keys(sys).length) {
+            const { error } = await supabase.from('contacts').update(sys).eq('id', existingId)
+            if (error) throw error
+          }
+          cid = existingId
           updated++
         } else {
-          // Create new contact
           const { data, error } = await supabase
             .from('contacts')
-            .insert({ ...row, tenant_id: tenantId, source: 'csv' })
+            .insert({ ...sys, tenant_id: tenantId, source: 'csv' })
             .select('id')
             .single()
           if (error) throw error
-          affectedIds.push((data as { id: string }).id)
+          cid = (data as { id: string }).id
           created++
         }
+
+        // Guarda los valores de campo (nunca pisa con vacío: solo van los presentes)
+        const fvRows = Object.entries(fields).map(([field_key, value]) => ({
+          contact_id: cid, tenant_id: tenantId, field_key, value,
+        }))
+        if (fvRows.length) {
+          const { error } = await supabase
+            .from('contact_field_values')
+            .upsert(fvRows, { onConflict: 'contact_id,field_key' })
+          if (error) throw error
+        }
+        affectedIds.push(cid)
       } catch (e) {
         console.error('Import row error:', e)
         failed++

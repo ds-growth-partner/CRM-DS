@@ -6,6 +6,7 @@ import { useSupabase } from '@/providers/supabase-provider'
 import { useAuth } from '@/providers/auth-provider'
 import type { HSMTemplate, ContactWithDetails, Campaign } from '@/lib/types/database'
 import type { FunnelStage } from '@/lib/types/database'
+import { toFieldMap, contactName, CONTACT_FIELDS_EMBED } from '@/lib/utils/contact-fields'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -32,13 +33,15 @@ interface ContactFilters {
 }
 
 // ─── Variable mapping ─────────────────────────────────────────────────────
+// Las llaves coinciden con los field_key de contact_field_values (lo que va en el
+// objeto `fields` que se envía a n8n), p. ej. fields.nombre, fields.telefono…
 const FIELD_OPTIONS = [
-  { key: 'first_name', label: 'Nombre' },
-  { key: 'last_name', label: 'Apellido' },
-  { key: 'phone', label: 'Teléfono' },
+  { key: 'nombre', label: 'Nombre' },
+  { key: 'apellido', label: 'Apellido' },
+  { key: 'telefono', label: 'Teléfono' },
   { key: 'email', label: 'Email' },
-  { key: 'company', label: 'Empresa' },
-  { key: 'city', label: 'Ciudad' },
+  { key: 'empresa', label: 'Empresa' },
+  { key: 'ciudad', label: 'Ciudad' },
 ]
 
 function scanTemplateVariables(body: string): { key: string; placeholder: string }[] {
@@ -310,8 +313,9 @@ function StepContacts({
   const filtered = contacts.filter(c => {
     if (filters.search) {
       const q = filters.search.toLowerCase()
-      const name = `${c.first_name} ${c.last_name ?? ''}`.toLowerCase()
-      if (!name.includes(q) && !(c.phone ?? '').includes(q) && !(c.email ?? '').toLowerCase().includes(q)) return false
+      const f = c.fields ?? {}
+      const name = contactName(f).toLowerCase()
+      if (!name.includes(q) && !(f.telefono ?? '').includes(q) && !(f.email ?? '').toLowerCase().includes(q)) return false
     }
     if (filters.funnel_stage_id && c.funnel_stage_id !== filters.funnel_stage_id) return false
     if (filters.source && c.source !== filters.source) return false
@@ -475,7 +479,8 @@ function StepContacts({
         <div className="space-y-1.5 max-h-[400px] overflow-y-auto pr-1">
           {filtered.map(contact => {
             const isSelected = selected.has(contact.id)
-            const name = `${contact.first_name} ${contact.last_name ?? ''}`.trim()
+            const cf = contact.fields ?? {}
+            const name = contactName(cf)
             return (
               <button
                 key={contact.id}
@@ -493,8 +498,8 @@ function StepContacts({
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">{name}</p>
                   <p className="text-xs text-muted-foreground truncate">
-                    {contact.phone ?? contact.email ?? 'Sin contacto'}
-                    {contact.company ? ` · ${contact.company}` : ''}
+                    {cf.telefono ?? cf.email ?? 'Sin contacto'}
+                    {cf.empresa ? ` · ${cf.empresa}` : ''}
                   </p>
                 </div>
                 <div className="shrink-0 flex items-center gap-2">
@@ -589,9 +594,9 @@ function StepConfirm({
             <div key={c.id} className="flex items-center gap-2 py-1.5 border-b border-border/40 last:border-0">
               <div className="flex-1 min-w-0">
                 <span className="text-sm text-foreground">
-                  {`${c.first_name} ${c.last_name ?? ''}`.trim()}
+                  {contactName(c.fields)}
                 </span>
-                {c.phone && <span className="text-xs text-muted-foreground ml-2">{c.phone}</span>}
+                {c.fields?.telefono && <span className="text-xs text-muted-foreground ml-2">{c.fields.telefono}</span>}
               </div>
               {c.wa_id && <span className="text-[10px] text-emerald-500 bg-emerald-500/10 rounded px-1.5 py-0.5 shrink-0">WA</span>}
             </div>
@@ -647,13 +652,14 @@ export default function NewCampaignPage() {
   useEffect(() => {
     supabase
       .from('contacts')
-      .select(`*, funnel_stage:funnel_stages(*), assigned_user:users!contacts_assigned_to_fkey(id, full_name, avatar_url), contact_tags(tag:tags(*))`)
+      .select(`*, funnel_stage:funnel_stages(*), assigned_user:users!contacts_assigned_to_fkey(id, full_name, avatar_url), contact_tags(tag:tags(*)), ${CONTACT_FIELDS_EMBED}`)
       .order('updated_at', { ascending: false })
       .limit(1000)
       .then(({ data }) => {
         const mapped = (data ?? []).map(c => ({
           ...c,
           tags: (c.contact_tags as unknown as { tag: unknown }[])?.map(ct => ct.tag) ?? [],
+          fields: toFieldMap((c as { contact_field_values?: { field_key: string; value: string | null }[] }).contact_field_values),
         }))
         setContacts(mapped as unknown as ContactWithDetails[])
         setContactsLoading(false)
@@ -806,14 +812,10 @@ export default function NewCampaignPage() {
         contacts: selectedContactsList.map(c => ({
           id: c.id,
           wa_id: c.wa_id,
-          phone: c.phone,
-          first_name: c.first_name,
-          last_name: c.last_name,
-          email: c.email,
-          company: c.company,
-          city: c.city,
           lead_score: c.lead_score,
           funnel_stage: (c.funnel_stage as { name?: string } | null)?.name ?? null,
+          // Todos los campos de perfil (nombre, telefono, email, …) en un solo objeto
+          fields: c.fields ?? {},
         })),
         total_contacts: selectedContactsList.length,
       }

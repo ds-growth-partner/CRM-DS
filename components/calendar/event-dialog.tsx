@@ -10,7 +10,8 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { XIcon, Link2, MapPin, Clock, Users, Video, Plus, Trash2, Loader2, ChevronDown, CalendarDays } from 'lucide-react'
-import type { Appointment, Contact } from '@/lib/types/database'
+import type { Appointment } from '@/lib/types/database'
+import { toFieldMap, contactName, CONTACT_FIELDS_EMBED } from '@/lib/utils/contact-fields'
 import { toast } from 'sonner'
 import { useSupabase } from '@/providers/supabase-provider'
 import { format, addHours, addDays, setHours, setMinutes } from 'date-fns'
@@ -43,7 +44,7 @@ export function EventDialog({ open, onClose, appointment, defaultStart, defaultE
   const { supabase } = useSupabase()
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [contacts, setContacts] = useState<Partial<Contact>[]>([])
+  const [contacts, setContacts] = useState<{ id: string; name: string; empresa?: string }[]>([])
   const [guestInput, setGuestInput] = useState('')
   const [attendees, setAttendees] = useState<string[]>([])
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -90,8 +91,13 @@ export function EventDialog({ open, onClose, appointment, defaultStart, defaultE
       })
       setAttendees(savedAttendees)
 
-      supabase.from('contacts').select('id, first_name, last_name, company, email').order('first_name')
-        .then(({ data }) => setContacts(data ?? []))
+      supabase.from('contacts').select(`id, ${CONTACT_FIELDS_EMBED}`)
+        .then(({ data }) => setContacts(
+          (data ?? []).map((c: { id: string; contact_field_values?: { field_key: string; value: string | null }[] }) => {
+            const f = toFieldMap(c.contact_field_values)
+            return { id: c.id, name: contactName(f), empresa: f.empresa }
+          })
+        ))
     }
   }, [open, appointment, defaultStart, defaultEnd, supabase])
 
@@ -362,10 +368,10 @@ export function EventDialog({ open, onClose, appointment, defaultStart, defaultE
                 <SelectContent>
                   <SelectItem value="none">Ninguno</SelectItem>
                   {contacts.map(c => (
-                    <SelectItem key={c.id} value={c.id!}>
+                    <SelectItem key={c.id} value={c.id}>
                       <div className="flex flex-col items-start">
-                        <span>{c.first_name} {c.last_name}</span>
-                        {c.company && <span className="text-xs text-muted-foreground">{c.company}</span>}
+                        <span>{c.name}</span>
+                        {c.empresa && <span className="text-xs text-muted-foreground">{c.empresa}</span>}
                       </div>
                     </SelectItem>
                   ))}

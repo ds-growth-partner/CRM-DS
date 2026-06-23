@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { formatDateTime } from '@/lib/utils/date'
+import { toFieldMap, contactName } from '@/lib/utils/contact-fields'
 import {
   ArrowLeft, Send, CheckCheck, Eye, Users, Play, Pause,
   MessageSquare, ExternalLink, CheckCircle2, XCircle, Clock, AlertCircle
@@ -50,13 +51,12 @@ function mapRecipient(r: any): RecipientRow {
   // Manejar si contact viene como objeto o array (por el alias en la query)
   const contact = Array.isArray(r.contact) ? r.contact[0] : r.contact
 
+  const fields = toFieldMap(contact?.contact_field_values)
   return {
     id: r.id,
     contact_id: r.contact_id,
-    contact_name: contact 
-      ? `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim() || 'Sin nombre'
-      : 'Sin nombre',
-    contact_phone: contact?.phone ?? null,
+    contact_name: contactName(fields),
+    contact_phone: fields.telefono ?? null,
     contact_wa_id: contact?.wa_id ?? null,
     status: r.status ?? 'pending',
     sent_at: r.sent_at ?? null,
@@ -98,10 +98,8 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ campa
         read_at,
         error_message,
         contact:contacts!campaign_messages_contact_id_fkey(
-          first_name,
-          last_name,
-          phone,
-          wa_id
+          wa_id,
+          contact_field_values(field_key, value)
         )
       `)
       .eq('campaign_id', campaignId)

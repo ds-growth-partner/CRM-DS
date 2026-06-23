@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { ConversationWithContact } from '@/lib/types/database'
 import type { ConversationFilters } from '@/lib/types/shared'
+import { contactName } from '@/lib/utils/contact-fields'
 import { ConversationItem } from './conversation-item'
 import { FilterPanel } from './filter-panel'
 import { Input } from '@/components/ui/input'
@@ -42,9 +43,10 @@ export function ConversationList({
   const filtered = conversations.filter(conv => {
     if (!debouncedSearch) return true
     const q = debouncedSearch.toLowerCase()
-    const name = `${conv.contact.first_name} ${conv.contact.last_name ?? ''}`.toLowerCase()
-    const phone = (conv.contact.phone ?? '').replace(/\D/g, '')
-    const email = (conv.contact.email ?? '').toLowerCase()
+    const f = conv.contact.fields ?? {}
+    const name = contactName(f).toLowerCase()
+    const phone = (f.telefono ?? '').replace(/\D/g, '')
+    const email = (f.email ?? '').toLowerCase()
     const preview = (conv.last_message_preview ?? '').toLowerCase()
     return (
       name.includes(q) ||

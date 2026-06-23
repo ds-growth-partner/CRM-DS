@@ -17,22 +17,22 @@ export const DEFAULT_FUNNEL_STAGES = [
 ] as const
 
 /**
- * Default contact fields. There are no hardcoded "system" fields anymore: nombre,
- * email, empresa, etc. are all regular field definitions the tenant can rename,
- * reorder and delete. The ones with `mapped_column` read/write a real column of
- * `contacts` (so n8n, search, lists and {{variables}} keep working); the rest live
- * in contacts.custom_fields (jsonb). All of them are fully editable afterwards.
+ * Campos de contacto por defecto. Ya no hay campos "de sistema" fijos: nombre,
+ * email, empresa, etc. son definiciones normales que el tenant puede renombrar,
+ * reordenar y borrar. TODOS los valores se guardan en contact_field_values
+ * (una fila por campo). Estos field_key base son los que la app usa por convención
+ * (nombre, apellido, telefono, email, empresa, ciudad).
  */
 export const DEFAULT_CUSTOM_FIELDS = [
-  { field_key: 'nombre',              label: 'Nombre',             field_type: 'text',   options: null, position: 0,  mapped_column: 'first_name' },
-  { field_key: 'apellido',            label: 'Apellido',           field_type: 'text',   options: null, position: 1,  mapped_column: 'last_name' },
-  { field_key: 'telefono',            label: 'Teléfono',           field_type: 'phone',  options: null, position: 2,  mapped_column: 'phone' },
-  { field_key: 'email',               label: 'Email',              field_type: 'email',  options: null, position: 3,  mapped_column: 'email' },
-  { field_key: 'empresa',             label: 'Empresa',            field_type: 'text',   options: null, position: 4,  mapped_column: 'company' },
-  { field_key: 'ciudad',              label: 'Ciudad',             field_type: 'text',   options: null, position: 5,  mapped_column: 'city' },
-  { field_key: 'documento',           label: 'Documento',          field_type: 'text',   options: null, position: 6,  mapped_column: null },
-  { field_key: 'origen_lead',         label: 'Origen del lead',    field_type: 'select', options: ['Sitio web', 'Referido', 'Redes sociales', 'Anuncio', 'WhatsApp', 'Otro'], position: 7, mapped_column: null },
-  { field_key: 'proximo_seguimiento', label: 'Próximo seguimiento', field_type: 'date',  options: null, position: 8,  mapped_column: null },
+  { field_key: 'nombre',              label: 'Nombre',             field_type: 'text',   options: null, position: 0 },
+  { field_key: 'apellido',            label: 'Apellido',           field_type: 'text',   options: null, position: 1 },
+  { field_key: 'telefono',            label: 'Teléfono',           field_type: 'phone',  options: null, position: 2 },
+  { field_key: 'email',               label: 'Email',              field_type: 'email',  options: null, position: 3 },
+  { field_key: 'empresa',             label: 'Empresa',            field_type: 'text',   options: null, position: 4 },
+  { field_key: 'ciudad',              label: 'Ciudad',             field_type: 'text',   options: null, position: 5 },
+  { field_key: 'documento',           label: 'Documento',          field_type: 'text',   options: null, position: 6 },
+  { field_key: 'origen_lead',         label: 'Origen del lead',    field_type: 'select', options: ['Sitio web', 'Referido', 'Redes sociales', 'Anuncio', 'WhatsApp', 'Otro'], position: 7 },
+  { field_key: 'proximo_seguimiento', label: 'Próximo seguimiento', field_type: 'date',  options: null, position: 8 },
 ] as const
 
 /** A couple of starter tags. */

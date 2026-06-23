@@ -17,6 +17,7 @@ import { ContactsFilterPanel } from '@/components/contacts/contacts-filter-panel
 import { BulkActionsBar } from '@/components/contacts/bulk-actions-bar'
 import type { FunnelStage, Tag as TagType } from '@/lib/types/database'
 import type { ContactFilters } from '@/lib/types/shared'
+import { contactName } from '@/lib/utils/contact-fields'
 
 export default function ContactsPage() {
   const [view, setView] = useState<'table' | 'kanban'>('table')
@@ -64,16 +65,19 @@ export default function ContactsPage() {
 
   function handleExportCSV() {
     const headers = ['Nombre', 'Teléfono', 'Email', 'Empresa', 'Ciudad', 'Lead Score', 'Fuente', 'Creado']
-    const rows = contacts.map(c => [
-      `${c.first_name} ${c.last_name ?? ''}`.trim(),
-      c.phone ?? '',
-      c.email ?? '',
-      c.company ?? '',
-      c.city ?? '',
-      c.lead_score,
-      c.source,
-      c.created_at.split('T')[0],
-    ])
+    const rows = contacts.map(c => {
+      const f = c.fields ?? {}
+      return [
+        contactName(f),
+        f.telefono ?? '',
+        f.email ?? '',
+        f.empresa ?? '',
+        f.ciudad ?? '',
+        c.lead_score,
+        c.source,
+        c.created_at.split('T')[0],
+      ]
+    })
     const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)

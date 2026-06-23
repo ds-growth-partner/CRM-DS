@@ -5,6 +5,7 @@ import { useSupabase } from '@/providers/supabase-provider'
 import { useAuth } from '@/providers/auth-provider'
 import type { ConversationWithContact } from '@/lib/types/database'
 import type { ConversationFilters } from '@/lib/types/shared'
+import { toFieldMap, contactName, CONTACT_FIELDS_EMBED } from '@/lib/utils/contact-fields'
 
 export function useRealtimeConversations(filters: ConversationFilters = {}) {
   const { supabase } = useSupabase()
@@ -28,7 +29,8 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
         contact:contacts!contact_id(
           *,
           funnel_stage:funnel_stages(*),
-          contact_tags(tag:tags(*))
+          contact_tags(tag:tags(*)),
+          ${CONTACT_FIELDS_EMBED}
         )
       `)
       .order('last_message_at', { ascending: false, nullsFirst: false })
@@ -57,6 +59,7 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
       const contact = contactData ? {
         ...contactData,
         tags: contactData.contact_tags?.map((ct: any) => ct.tag) ?? [],
+        fields: toFieldMap(contactData.contact_field_values),
       } : null
       
       return {
@@ -70,9 +73,9 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
       const q = filters.search.toLowerCase()
       result = result.filter(c => {
         if (!c.contact) return false
-        const contact = c.contact as any
-        const name = `${contact.first_name} ${contact.last_name ?? ''}`.toLowerCase()
-        return name.includes(q) || (contact.phone ?? '').includes(q)
+        const f = c.contact.fields ?? {}
+        const name = contactName(f).toLowerCase()
+        return name.includes(q) || (f.telefono ?? '').includes(q) || (f.email ?? '').toLowerCase().includes(q)
       })
     }
 
@@ -121,6 +124,7 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations', filter: f }, () => loadConversations())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts', filter: f }, () => loadConversations())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: f }, () => loadConversations())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'contact_field_values', filter: f }, () => loadConversations())
       .subscribe((status) => {
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.error('[useRealtimeConversations] realtime channel status:', status)

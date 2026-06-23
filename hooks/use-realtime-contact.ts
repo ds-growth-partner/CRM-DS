@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { useSupabase } from '@/providers/supabase-provider'
-import type { Contact, FunnelStage, Tag } from '@/lib/types/database'
+import type { Contact, FunnelStage, Tag, ContactFields } from '@/lib/types/database'
+import { toFieldMap, CONTACT_FIELDS_EMBED } from '@/lib/utils/contact-fields'
 
 export type ContactFull = Contact & {
   funnel_stage?: FunnelStage | null
   tags?: Tag[]
+  fields?: ContactFields
 }
 
 export function useRealtimeContact(contactId: string | null) {
@@ -20,14 +22,16 @@ export function useRealtimeContact(contactId: string | null) {
       .select(`
         *,
         funnel_stage:funnel_stages(*),
-        contact_tags(tag:tags(*))
+        contact_tags(tag:tags(*)),
+        ${CONTACT_FIELDS_EMBED}
       `)
       .eq('id', id)
       .single()
 
     if (data) {
       const tags = (data.contact_tags as unknown as { tag: Tag }[])?.map(ct => ct.tag) ?? []
-      setContact({ ...data, tags, funnel_stage: data.funnel_stage } as ContactFull)
+      const fields = toFieldMap((data as { contact_field_values?: { field_key: string; value: string | null }[] }).contact_field_values)
+      setContact({ ...data, tags, funnel_stage: data.funnel_stage, fields } as ContactFull)
     }
     setLoading(false)
   }
@@ -61,6 +65,17 @@ export function useRealtimeContact(contactId: string | null) {
           event: '*',
           schema: 'public',
           table: 'contact_tags',
+          filter: `contact_id=eq.${contactId}`,
+        },
+        () => loadContact(contactId)
+      )
+      // Cambios en los campos del contacto (incl. los que escribe n8n)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'contact_field_values',
           filter: `contact_id=eq.${contactId}`,
         },
         () => loadContact(contactId)

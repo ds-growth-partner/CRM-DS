@@ -108,17 +108,13 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['tags']['Insert']>
       }
       contacts: {
+        // Solo campos de sistema. El nombre, email, teléfono, empresa y demás
+        // campos de perfil viven en `contact_field_values` (una fila por campo).
         Row: {
           id: string
           tenant_id: string
-          first_name: string
-          last_name: string | null
-          phone: string | null
-          email: string | null
-          company: string | null
           job_title: string | null
-          city: string | null
-          country: string
+          country: string | null
           wa_id: string | null
           funnel_stage_id: string | null
           lead_score: number
@@ -126,14 +122,24 @@ export type Database = {
           assigned_to: string | null
           ai_active: boolean
           last_incoming_at: string | null
-          custom_fields: Json
-          notes: string | null
           last_contacted_at: string | null
+          notes: string | null
           created_at: string
           updated_at: string
         }
         Insert: Omit<Database['public']['Tables']['contacts']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['contacts']['Insert']>
+      }
+      contact_field_values: {
+        Row: {
+          contact_id: string
+          tenant_id: string
+          field_key: string
+          value: string | null
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['contact_field_values']['Row'], 'updated_at'>
+        Update: Partial<Database['public']['Tables']['contact_field_values']['Insert']>
       }
       contact_tags: {
         Row: {
@@ -417,9 +423,6 @@ export type Database = {
           options: Json | null
           is_required: boolean
           position: number
-          // When set, the field's value lives in this real column of `contacts`
-          // (e.g. 'first_name'). When null, it lives in contacts.custom_fields jsonb.
-          mapped_column: string | null
           created_at: string
         }
         Insert: Omit<Database['public']['Tables']['custom_field_definitions']['Row'], 'id' | 'created_at'>
@@ -484,6 +487,9 @@ export type User = Tables<'users'>
 export type FunnelStage = Tables<'funnel_stages'>
 export type Tag = Tables<'tags'>
 export type Contact = Tables<'contacts'>
+export type ContactFieldValue = Tables<'contact_field_values'>
+/** Mapa field_key → valor, construido desde contact_field_values. */
+export type ContactFields = Record<string, string>
 export type ContactTag = Tables<'contact_tags'>
 export type Conversation = Tables<'conversations'>
 export type AIAction = Tables<'ai_actions'>
@@ -506,16 +512,20 @@ export type DealWithService = Deal & {
   service?: Service | null
 }
 
-// Extended types with joins
+// Extended types with joins.
+// `fields` se arma desde el embed contact_field_values(field_key,value) con
+// toFieldMap(); usa contactName(fields) para el nombre a mostrar.
 export type ContactWithDetails = Contact & {
   funnel_stage?: FunnelStage | null
   tags?: Tag[]
   assigned_user?: User | null
+  fields?: ContactFields
 }
 
 export type ContactForConversation = Contact & {
   funnel_stage?: FunnelStage | null
   tags?: Tag[]
+  fields?: ContactFields
 }
 
 export type ConversationWithContact = Conversation & {

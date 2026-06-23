@@ -24,7 +24,8 @@ import { toast } from 'sonner'
 import { formatDate } from '@/lib/utils/date'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
-import type { FunnelStage, Json, PhaseTransition, Conversation, Appointment } from '@/lib/types/database'
+import type { FunnelStage, PhaseTransition, Conversation, Appointment } from '@/lib/types/database'
+import { contactName, contactInitials } from '@/lib/utils/contact-fields'
 import {
   ArrowLeft, Phone, Mail, Building2, MapPin, Globe, Calendar,
   Pencil, Plus, X, Check, ChevronDown, Loader2,
@@ -36,12 +37,11 @@ interface ContactDetailViewProps {
   contactId: string
 }
 
-type EditableField = 'first_name' | 'last_name'
+type EditableField = 'nombre' | 'apellido'
 
-// Icons for the unified contact-info list (mapped columns get a meaningful icon,
-// everything else falls back to a generic hash).
+// Iconos para los campos base de la lista; el resto usa un hash genérico.
 const FIELD_ICONS: Record<string, React.ElementType> = {
-  phone: Phone, email: Mail, company: Building2, city: MapPin,
+  telefono: Phone, email: Mail, empresa: Building2, ciudad: MapPin,
 }
 
 // ── Section header ─────────────────────────────────────────────────────────────
@@ -174,21 +174,15 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
   }, [supabase, contactId])
 
   // ── Sync contact local state ────────────────────────────────────────────────
-  // Build the input buffer for every field definition: mapped fields read from the
-  // real contacts column, the rest from contacts.custom_fields (jsonb).
+  // Todos los valores viven en contact_field_values → contact.fields.
   useEffect(() => {
     if (!contact) return
     setNotes(contact.notes ?? '')
-    const cf = (contact.custom_fields as Record<string, unknown>) ?? {}
-    const c = contact as unknown as Record<string, unknown>
+    const f = contact.fields ?? {}
     const vals: Record<string, string> = {}
-    for (const def of customFieldDefs) {
-      vals[def.field_key] = def.mapped_column
-        ? String(c[def.mapped_column] ?? '')
-        : String(cf[def.field_key] ?? '')
-    }
+    for (const def of customFieldDefs) vals[def.field_key] = f[def.field_key] ?? ''
     setFieldValues(vals)
-  }, [contact?.id, customFieldDefs]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [contact?.id, contact?.fields, customFieldDefs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Scroll to bottom on new messages ───────────────────────────────────────
   useEffect(() => {
@@ -198,16 +192,6 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
   }, [messages.length, messagesLoading])
 
   // ── Save helpers ────────────────────────────────────────────────────────────
-  async function saveField(field: string, value: string | null) {
-    setSavingField(field)
-    const { error } = await supabase
-      .from('contacts')
-      .update({ [field]: value || null, updated_at: new Date().toISOString() })
-      .eq('id', contactId)
-    if (error) toast.error('Error al guardar')
-    setSavingField(null)
-  }
-
   async function saveStage(stageId: string | null) {
     setSavingField('stage')
     setStageMenuOpen(false)
@@ -231,22 +215,22 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
     }, 800)
   }
 
-  async function saveCustomField(key: string, value: string) {
-    const base = (contact?.custom_fields as Record<string, unknown>) ?? {}
-    const updated = { ...base, [key]: value || undefined }
-    const { error } = await supabase
-      .from('contacts')
-      .update({ custom_fields: updated as Json, updated_at: new Date().toISOString() })
-      .eq('id', contactId)
+  // Guarda CUALQUIER campo del contacto en contact_field_values (una fila por campo).
+  // value vacío → borra la fila (no deja campos vacíos en la tabla).
+  async function saveFieldValue(fieldKey: string, value: string) {
+    setFieldValues(p => ({ ...p, [fieldKey]: value }))
+    if (!tenant) return
+    setSavingField(fieldKey)
+    const v = value.trim()
+    const { error } = v === ''
+      ? await supabase.from('contact_field_values').delete()
+          .eq('contact_id', contactId).eq('field_key', fieldKey)
+      : await supabase.from('contact_field_values').upsert(
+          { contact_id: contactId, tenant_id: tenant.id, field_key: fieldKey, value: v },
+          { onConflict: 'contact_id,field_key' },
+        )
     if (error) toast.error('Error al guardar campo')
-  }
-
-  // Unified save for any field in the contact-info list: mapped fields write to the
-  // real column, everything else writes to contacts.custom_fields.
-  function saveFieldValue(def: { field_key: string; mapped_column: string | null }, value: string) {
-    setFieldValues(p => ({ ...p, [def.field_key]: value }))
-    if (def.mapped_column) saveField(def.mapped_column, value)
-    else saveCustomField(def.field_key, value)
+    setSavingField(null)
   }
 
   function startEdit(field: EditableField, current: string) {
@@ -259,14 +243,15 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
     const field = editingField
     const value = fieldValue
     setEditingField(null)
-    await saveField(field, value)
+    await saveFieldValue(field, value)
   }
 
   // ── Derived ─────────────────────────────────────────────────────────────────
-  const fullName = contact ? `${contact.first_name} ${contact.last_name ?? ''}`.trim() : ''
+  const cfields = contact?.fields ?? {}
+  const fullName = contactName(cfields) === 'Sin nombre' ? '' : contactName(cfields)
   const assignedTagIds = new Set((contact?.tags ?? []).map(t => t.id))
   const currentStage = stages.find(s => s.id === contact?.funnel_stage_id)
-  const initials = fullName.charAt(0).toUpperCase()
+  const initials = contactInitials(cfields)
 
   // ── Group messages by date ──────────────────────────────────────────────────
   type MsgGroup = { date: string; entries: typeof messages }
@@ -327,21 +312,21 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
           </div>
         </div>
 
-        {editingField === 'first_name' || editingField === 'last_name' ? (
+        {editingField === 'nombre' || editingField === 'apellido' ? (
           <div className="flex gap-1.5 w-full max-w-[220px]">
             <Input
-              autoFocus={editingField === 'first_name'}
-              value={editingField === 'first_name' ? fieldValue : contact.first_name}
-              onChange={e => editingField === 'first_name' && setFieldValue(e.target.value)}
+              autoFocus={editingField === 'nombre'}
+              value={editingField === 'nombre' ? fieldValue : (cfields.nombre ?? '')}
+              onChange={e => editingField === 'nombre' && setFieldValue(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditingField(null) }}
               onBlur={commitEdit}
               className="h-8 text-sm text-center"
               placeholder="Nombre"
             />
             <Input
-              autoFocus={editingField === 'last_name'}
-              value={editingField === 'last_name' ? fieldValue : (contact.last_name ?? '')}
-              onChange={e => editingField === 'last_name' && setFieldValue(e.target.value)}
+              autoFocus={editingField === 'apellido'}
+              value={editingField === 'apellido' ? fieldValue : (cfields.apellido ?? '')}
+              onChange={e => editingField === 'apellido' && setFieldValue(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditingField(null) }}
               onBlur={commitEdit}
               className="h-8 text-sm text-center"
@@ -350,17 +335,17 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
           </div>
         ) : (
           <div className="flex items-center gap-1.5 group">
-            <p className="text-lg font-semibold text-foreground leading-tight">{fullName}</p>
+            <p className="text-lg font-semibold text-foreground leading-tight">{fullName || 'Sin nombre'}</p>
             <button
-              onClick={() => startEdit('first_name', contact.first_name)}
+              onClick={() => startEdit('nombre', cfields.nombre ?? '')}
               className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary mt-0.5"
             >
               <Pencil className="h-3.5 w-3.5" />
             </button>
           </div>
         )}
-        {contact.company && (
-          <p className="text-xs text-muted-foreground mt-1">{contact.company}</p>
+        {cfields.empresa && (
+          <p className="text-xs text-muted-foreground mt-1">{cfields.empresa}</p>
         )}
 
         {/* wa_id chip */}
@@ -501,10 +486,10 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
           <SectionHeader label="Información del contacto" />
           <div className="space-y-3">
             {customFieldDefs
-              .filter(def => def.mapped_column !== 'first_name' && def.mapped_column !== 'last_name')
+              .filter(def => def.field_key !== 'nombre' && def.field_key !== 'apellido')
               .map(def => {
                 const val = fieldValues[def.field_key] ?? ''
-                const Icon = (def.mapped_column && FIELD_ICONS[def.mapped_column]) || Hash
+                const Icon = FIELD_ICONS[def.field_key] || Hash
                 return (
                   <div key={def.id} className="space-y-1">
                     <div className="flex items-center gap-1.5">
@@ -514,7 +499,7 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
                     {def.field_type === 'select' && def.options ? (
                       <select
                         value={val}
-                        onChange={e => saveFieldValue(def, e.target.value)}
+                        onChange={e => saveFieldValue(def.field_key, e.target.value)}
                         className="w-full h-8 rounded-lg border border-border bg-muted/30 text-sm px-2.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                       >
                         <option value="">— seleccionar —</option>
@@ -524,7 +509,7 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
                       </select>
                     ) : def.field_type === 'boolean' ? (
                       <button
-                        onClick={() => saveFieldValue(def, val === 'true' ? 'false' : 'true')}
+                        onClick={() => saveFieldValue(def.field_key, val === 'true' ? 'false' : 'true')}
                         className={cn(
                           'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
                           val === 'true' ? 'bg-primary' : 'bg-muted-foreground/30'
@@ -547,7 +532,7 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
                         }
                         value={val}
                         onChange={e => setFieldValues(p => ({ ...p, [def.field_key]: e.target.value }))}
-                        onBlur={e => saveFieldValue(def, e.target.value)}
+                        onBlur={e => saveFieldValue(def.field_key, e.target.value)}
                         placeholder={`Añadir ${def.label.toLowerCase()}...`}
                         className="h-8 text-sm bg-muted/30"
                       />
@@ -778,9 +763,9 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
         </div>
 
         <div className="flex-1 min-w-0">
-          <h1 className="text-sm font-semibold text-foreground truncate">{fullName}</h1>
-          {contact.company && (
-            <p className="text-xs text-muted-foreground truncate">{contact.company}</p>
+          <h1 className="text-sm font-semibold text-foreground truncate">{fullName || 'Sin nombre'}</h1>
+          {cfields.empresa && (
+            <p className="text-xs text-muted-foreground truncate">{cfields.empresa}</p>
           )}
         </div>
 

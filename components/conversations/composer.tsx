@@ -11,7 +11,8 @@ import { useSupabase } from '@/providers/supabase-provider'
 import { useCannedResponses } from '@/hooks/use-canned-responses'
 import { useCustomFieldDefinitions } from '@/hooks/use-custom-field-definitions'
 import { EmojiPicker } from '@/components/ui/emoji-picker'
-import type { ContactForConversation, CustomFieldDefinition } from '@/lib/types/database'
+import type { ContactForConversation } from '@/lib/types/database'
+import { contactName } from '@/lib/utils/contact-fields'
 
 interface ComposerProps {
   conversationId: string
@@ -23,35 +24,29 @@ interface ComposerProps {
   onMessageSent?: () => void
 }
 
-// Reemplaza {{field_key}} con el valor del contacto.
-// Resuelve tanto los nombres clave de las definiciones (p. ej. {{nombre}}, que puede
-// estar mapeado a la columna first_name) como los built-ins legacy ({{first_name}}…)
-// para que plantillas/respuestas antiguas sigan funcionando.
+// Reemplaza {{field_key}} con el valor del contacto. Todos los valores viven en
+// contact.fields (contact_field_values). Se mantienen los built-ins legacy
+// ({{first_name}}, {{phone}}…) mapeados a los field_key base para que plantillas
+// antiguas sigan funcionando.
 function resolveVariables(
   text: string,
   contact: ContactForConversation | null | undefined,
-  defs: CustomFieldDefinition[]
 ): string {
-  const c = contact as unknown as Record<string, unknown> | null | undefined
-  const customValues = (contact?.custom_fields as Record<string, unknown>) ?? {}
+  const f = contact?.fields ?? {}
+  const name = contactName(f)
+  const builtIn: Record<string, string | undefined> = {
+    first_name: f.nombre,
+    last_name: f.apellido,
+    full_name: name === 'Sin nombre' ? undefined : name,
+    phone: f.telefono,
+    email: f.email,
+    company: f.empresa,
+    city: f.ciudad,
+  }
   return text.replace(/\{\{(\w+)\}\}/g, (_, key) => {
-    const builtIn: Record<string, string | null | undefined> = {
-      first_name: contact?.first_name,
-      last_name: contact?.last_name,
-      full_name: contact ? `${contact.first_name} ${contact.last_name ?? ''}`.trim() : undefined,
-      phone: contact?.phone,
-      email: contact?.email,
-      company: contact?.company,
-      city: contact?.city,
-    }
     if (key in builtIn) return builtIn[key] ?? `{{${key}}}`
-    const def = defs.find(d => d.field_key === key)
-    if (def) {
-      const v = def.mapped_column ? c?.[def.mapped_column] : customValues[def.field_key]
-      return v != null && v !== '' ? String(v) : `{{${key}}}`
-    }
-    const custom = customValues[key]
-    return custom !== undefined && custom !== null ? String(custom) : `{{${key}}}`
+    const v = f[key]
+    return v != null && v !== '' ? String(v) : `{{${key}}}`
   })
 }
 
@@ -161,7 +156,7 @@ export function Composer({
     if ((!hasText && !hasFiles) || sending) return
 
     setSending(true)
-    const resolved = hasText ? resolveVariables(text.trim(), contact, customFieldDefs) : ''
+    const resolved = hasText ? resolveVariables(text.trim(), contact) : ''
     if (hasText) onOptimisticMessage?.(resolved)
     setText('')
     setAttachments([])
@@ -197,13 +192,8 @@ export function Composer({
               message: resolved,
               contact: contact ? {
                 id: contact.id,
-                first_name: contact.first_name,
-                last_name: contact.last_name,
-                phone: contact.phone,
-                email: contact.email,
                 wa_id: contact.wa_id,
-                company: contact.company,
-                custom_fields: contact.custom_fields,
+                fields: contact.fields ?? {},
               } : null,
               conversation_id: conversationId,
             }),
@@ -243,13 +233,8 @@ export function Composer({
                 message: `[${ct}] ${file.name}`,
                 contact: contact ? {
                   id: contact.id,
-                  first_name: contact.first_name,
-                  last_name: contact.last_name,
-                  phone: contact.phone,
-                  email: contact.email,
                   wa_id: contact.wa_id,
-                  company: contact.company,
-                  custom_fields: contact.custom_fields,
+                  fields: contact.fields ?? {},
                 } : null,
                 conversation_id: conversationId,
               }),

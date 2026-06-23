@@ -282,9 +282,6 @@ export default function CustomFieldsPage() {
                     ) : (
                       <span className="text-sm font-medium">{field.label}</span>
                     )}
-                    {field.mapped_column && (
-                      <span className="text-[10px] text-muted-foreground/70 font-medium shrink-0">campo base</span>
-                    )}
                     {field.is_required && (
                       <span className="text-[10px] text-destructive font-medium">Requerido</span>
                     )}

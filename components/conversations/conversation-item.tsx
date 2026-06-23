@@ -3,6 +3,7 @@
 import { cn } from '@/lib/utils'
 import { formatTime } from '@/lib/utils/date'
 import { getInitials } from '@/lib/utils/format'
+import { contactName } from '@/lib/utils/contact-fields'
 import type { ConversationWithContact } from '@/lib/types/database'
 import { Bot, User } from 'lucide-react'
 
@@ -14,7 +15,7 @@ interface ConversationItemProps {
 
 export function ConversationItem({ conversation, isSelected, onClick }: ConversationItemProps) {
   const contact = conversation.contact
-  const fullName = `${contact.first_name} ${contact.last_name ?? ''}`.trim()
+  const fullName = contactName(contact.fields)
   const tags = (contact as { tags?: { id: string; name: string; color: string }[] }).tags ?? []
 
   return (

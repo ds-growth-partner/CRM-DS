@@ -8,6 +8,7 @@ import { FunnelBadge } from '@/components/shared/funnel-badge'
 import { LeadScoreBar } from '@/components/shared/lead-score-bar'
 import { formatDate } from '@/lib/utils/date'
 import { formatPhone } from '@/lib/utils/format'
+import { contactName } from '@/lib/utils/contact-fields'
 import { cn } from '@/lib/utils'
 import {
   ArrowUpDown,
@@ -44,8 +45,8 @@ export function ContactsTable({ contacts, loading, selectedIds, onToggle, onSele
     let av: string | number = ''
     let bv: string | number = ''
     if (sort.key === 'full_name') {
-      av = `${a.first_name} ${a.last_name ?? ''}`.toLowerCase()
-      bv = `${b.first_name} ${b.last_name ?? ''}`.toLowerCase()
+      av = contactName(a.fields).toLowerCase()
+      bv = contactName(b.fields).toLowerCase()
     } else if (sort.key === 'lead_score') {
       av = a.lead_score; bv = b.lead_score
     } else {
@@ -118,7 +119,8 @@ export function ContactsTable({ contacts, loading, selectedIds, onToggle, onSele
         </thead>
         <tbody>
           {sorted.map(contact => {
-            const fullName = `${contact.first_name} ${contact.last_name ?? ''}`.trim()
+            const cfields = contact.fields ?? {}
+            const fullName = contactName(cfields)
             const tags = (contact as ContactWithDetails & { tags?: { id: string; name: string; color: string }[] }).tags ?? []
             const isSelected = selectedIds.has(contact.id)
             return (
@@ -146,9 +148,9 @@ export function ContactsTable({ contacts, loading, selectedIds, onToggle, onSele
                     {fullName}
                   </Link>
                 </td>
-                <td className="px-3 py-4 text-muted-foreground">{formatPhone(contact.phone)}</td>
-                <td className="px-3 py-4 text-muted-foreground truncate max-w-[160px]">{contact.email ?? '—'}</td>
-                <td className="px-3 py-4 text-muted-foreground">{contact.company ?? '—'}</td>
+                <td className="px-3 py-4 text-muted-foreground">{formatPhone(cfields.telefono ?? null)}</td>
+                <td className="px-3 py-4 text-muted-foreground truncate max-w-[160px]">{cfields.email ?? '—'}</td>
+                <td className="px-3 py-4 text-muted-foreground">{cfields.empresa ?? '—'}</td>
                 <td className="px-3 py-4">
                   <FunnelBadge stage={contact.funnel_stage} />
                 </td>

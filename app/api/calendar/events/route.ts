@@ -65,12 +65,14 @@ export async function POST(request: NextRequest) {
   if (hasN8n) {
     let contact = null
     if (appt.contact_id) {
-      const { data } = await admin
-        .from('contacts')
-        .select('first_name, last_name, email, phone')
-        .eq('id', appt.contact_id)
-        .single()
-      contact = data
+      // Los datos de perfil viven en contact_field_values; los devolvemos como mapa
+      const { data: fv } = await admin
+        .from('contact_field_values')
+        .select('field_key, value')
+        .eq('contact_id', appt.contact_id)
+      const fields: Record<string, string> = {}
+      for (const r of fv ?? []) if (r.value != null) fields[r.field_key] = r.value
+      contact = { id: appt.contact_id, fields }
     }
 
     const payload = {
