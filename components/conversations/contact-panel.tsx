@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRealtimeContact } from '@/hooks/use-realtime-contact'
 import { useContactTags } from '@/hooks/use-contact-tags'
 import { useCustomFieldDefinitions } from '@/hooks/use-custom-field-definitions'
+import { useContactNotes } from '@/hooks/use-contact-notes'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
@@ -15,10 +16,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Phone, Mail, Building2, MapPin, Hash, Plus, X, Check,
-  ChevronDown, Calendar, Globe, Pencil, Loader2, ArrowLeft,
+  ChevronDown, Calendar, Globe, Pencil, Loader2, ArrowLeft, Bot,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { formatDate } from '@/lib/utils/date'
+import { formatDate, timeAgo } from '@/lib/utils/date'
 import { useSupabase } from '@/providers/supabase-provider'
 import { useAuth } from '@/providers/auth-provider'
 import type { FunnelStage } from '@/lib/types/database'
@@ -39,6 +40,7 @@ const FIELD_ICONS: Record<string, React.ElementType> = {
 
 export function ContactPanel({ contactId, conversationId, onClose }: ContactPanelProps) {
   const { contact, loading } = useRealtimeContact(contactId)
+  const { notes: contactNotes } = useContactNotes(contactId)
   const { allTags, loadingTags, loadAllTags, assignTag, removeTag } = useContactTags(contactId)
   const { fields: customFieldDefs } = useCustomFieldDefinitions()
   const { supabase } = useSupabase()
@@ -425,6 +427,30 @@ export function ContactPanel({ contactId, conversationId, onClose }: ContactPane
                 />
               </div>
 
+              {/* Notas del bot — feed en tiempo real desde contact_notes */}
+              {contactNotes.length > 0 && (
+                <div className="rounded-xl border border-border bg-card/50 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Bot className="h-3 w-3 text-purple-500" />
+                    <SectionHeader label="Notas del bot" />
+                  </div>
+                  <div className="space-y-2">
+                    {contactNotes.map(note => (
+                      <div key={note.id} className="rounded-lg border border-border/60 bg-muted/30 p-2">
+                        <p className="text-xs text-foreground whitespace-pre-wrap leading-snug">{note.content}</p>
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="text-[10px] text-muted-foreground/70">
+                            {note.created_by ? 'Equipo' : 'Bot IA'}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground/40">·</span>
+                          <span className="text-[10px] text-muted-foreground/70">{timeAgo(note.created_at)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Origen */}
               <div className="rounded-xl border border-border bg-card/50 p-3 space-y-2">
                 <SectionHeader label="Origen" />
@@ -443,7 +469,7 @@ export function ContactPanel({ contactId, conversationId, onClose }: ContactPane
         </TabsContent>
 
         <TabsContent value="ai" className="flex-1 overflow-hidden mt-0">
-          <AIMindPanel conversationId={conversationId} />
+          <AIMindPanel contactId={contactId} />
         </TabsContent>
       </Tabs>
     </div>

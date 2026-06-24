@@ -1109,3 +1109,66 @@ CREATE POLICY deals_write ON deals FOR ALL
 
 ALTER PUBLICATION supabase_realtime ADD TABLE deals;
 ALTER PUBLICATION supabase_realtime ADD TABLE services;
+
+-- ============================================================================
+-- AI ACTIONS → memoria de la IA + notas del bot
+-- ============================================================================
+-- Las notas que deje el bot (contact_notes) se ven en el panel de contacto en
+-- tiempo real. REPLICA IDENTITY FULL para que los eventos DELETE traigan la fila.
+ALTER PUBLICATION supabase_realtime ADD TABLE contact_notes;
+ALTER TABLE contact_notes REPLICA IDENTITY FULL;
+
+-- Cada fila de ai_actions se espeja a n8n_chat_histories (la memoria LangChain
+-- del agente). El bot guarda action_type = acción ejecutada y summary = contexto
+-- del usuario; session_id LangChain = '<tenant_id>:<wa_id>'.
+CREATE OR REPLACE FUNCTION public.mirror_ai_action_to_memory()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_wa_id   text;
+  v_session text;
+  v_uuid_re text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+  v_action  text;
+  v_ctx     text;
+  v_text    text;
+BEGIN
+  SELECT wa_id INTO v_wa_id FROM public.contacts WHERE id = NEW.contact_id;
+  IF v_wa_id IS NULL OR btrim(v_wa_id) = '' THEN
+    RETURN NEW;
+  END IF;
+  v_session := NEW.tenant_id::text || ':' || v_wa_id;
+
+  v_action := CASE WHEN NEW.action_type IS NOT NULL AND NEW.action_type !~* v_uuid_re
+                   THEN btrim(NEW.action_type) END;
+  v_ctx    := CASE WHEN NEW.summary IS NOT NULL AND NEW.summary !~* v_uuid_re
+                   THEN btrim(NEW.summary) END;
+
+  v_text := NULLIF(btrim(concat_ws(' → ', NULLIF(v_ctx, ''), NULLIF(v_action, ''))), '');
+  IF v_text IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  INSERT INTO public.n8n_chat_histories (session_id, message, time_stamp)
+  VALUES (
+    v_session,
+    jsonb_build_object(
+      'type', 'ai',
+      'content', v_text,
+      'tool_calls', '[]'::jsonb,
+      'additional_kwargs', jsonb_build_object('source', 'ai_action', 'ai_action_id', NEW.id),
+      'response_metadata', '{}'::jsonb,
+      'invalid_tool_calls', '[]'::jsonb
+    ),
+    now()
+  );
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_mirror_ai_action_to_memory ON ai_actions;
+CREATE TRIGGER trg_mirror_ai_action_to_memory
+AFTER INSERT ON ai_actions
+FOR EACH ROW EXECUTE FUNCTION public.mirror_ai_action_to_memory();

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMessages } from '@/hooks/use-messages'
 import { useRealtimeContact } from '@/hooks/use-realtime-contact'
+import { useRealtimeAIActions } from '@/hooks/use-realtime-ai-actions'
+import { aiActionText } from '@/lib/utils/ai-actions'
 import { MessageBubble } from './message-bubble'
 import { Composer } from './composer'
 import { WindowIndicator } from './window-indicator'
@@ -10,7 +12,7 @@ import { TakeControlButton } from './take-control-button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
-import type { ConversationWithContact, User } from '@/lib/types/database'
+import type { ConversationWithContact, User, Message, AIAction } from '@/lib/types/database'
 import { formatDate } from '@/lib/utils/date'
 import { contactName, contactInitials } from '@/lib/utils/contact-fields'
 import { Bot, User as UserIcon, UserCheck, ChevronDown, ArrowLeft, Info } from 'lucide-react'
@@ -28,6 +30,7 @@ interface ChatViewProps {
 export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps) {
   const contact = conversation.contact
   const { messages, loading, addOptimisticMessage } = useMessages(conversation.id)
+  const { actions } = useRealtimeAIActions(contact.id)
   const { contact: liveContact } = useRealtimeContact(contact.id)
   const bottomRef = useRef<HTMLDivElement>(null)
   const [aiActive, setAiActive] = useState(conversation.ai_active)
@@ -70,17 +73,29 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
     toast.success(agent ? `Asignado a ${agent.full_name}` : 'Asesor removido')
   }
 
-  // Group messages by date
-  type Grouped = { date: string; entries: typeof messages }
+  // Merge WhatsApp messages + AI actions into a single timeline, ordered by time.
+  // (Las acciones de la IA se muestran como líneas centradas grises entre los mensajes.)
+  type TimelineItem =
+    | { kind: 'message'; at: string; msg: Message }
+    | { kind: 'action'; at: string; action: AIAction }
+  const timeline: TimelineItem[] = [
+    ...messages.map((m): TimelineItem => ({ kind: 'message', at: m.created_at, msg: m })),
+    ...actions
+      .filter(a => aiActionText(a) !== '')
+      .map((a): TimelineItem => ({ kind: 'action', at: a.created_at, action: a })),
+  ].sort((a, b) => a.at.localeCompare(b.at))
+
+  // Group timeline by date
+  type Grouped = { date: string; entries: TimelineItem[] }
   const grouped: Grouped[] = []
   let currentDate = ''
-  for (const msg of messages) {
-    const d = formatDate(msg.created_at)
+  for (const item of timeline) {
+    const d = formatDate(item.at)
     if (d !== currentDate) {
       currentDate = d
-      grouped.push({ date: d, entries: [msg] })
+      grouped.push({ date: d, entries: [item] })
     } else {
-      grouped[grouped.length - 1].entries.push(msg)
+      grouped[grouped.length - 1].entries.push(item)
     }
   }
 
@@ -225,8 +240,10 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
                     {date}
                   </span>
                 </div>
-                {entries.map(msg => (
-                  <MessageBubble key={msg.id} message={msg} />
+                {entries.map(item => (
+                  item.kind === 'message'
+                    ? <MessageBubble key={`m-${item.msg.id}`} message={item.msg} />
+                    : <AIActionLine key={`a-${item.action.id}`} action={item.action} />
                 ))}
               </div>
             ))}
@@ -245,6 +262,20 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
           if (tenant) addOptimisticMessage(content, tenant.id, contact.id)
         }}
       />
+    </div>
+  )
+}
+
+// Acción de la IA renderizada como una línea de sistema centrada, en gris claro.
+function AIActionLine({ action }: { action: AIAction }) {
+  const text = aiActionText(action)
+  if (!text) return null
+  return (
+    <div className="flex justify-center px-4 my-2">
+      <div className="flex items-start gap-1.5 max-w-[85%] text-center text-[11px] leading-snug text-muted-foreground/80 bg-muted/40 border border-border/40 rounded-2xl px-3 py-1.5">
+        <Bot className="h-3 w-3 mt-0.5 shrink-0 opacity-50" />
+        <span>{text}</span>
+      </div>
     </div>
   )
 }

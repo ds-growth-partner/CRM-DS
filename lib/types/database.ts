@@ -208,11 +208,11 @@ export type Database = {
         Row: {
           id: string
           tenant_id: string
-          conversation_id: string
+          conversation_id: string | null
           contact_id: string
           action_type: string
           tool_name: string | null
-          status: 'success' | 'failure' | 'pending'
+          status: 'success' | 'failure' | 'pending' | 'completed'
           summary: string
           details: Json | null
           reasoning: string | null
@@ -393,9 +393,8 @@ export type Database = {
           content: string
           created_by: string | null
           created_at: string
-          updated_at: string
         }
-        Insert: Omit<Database['public']['Tables']['contact_notes']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Insert: Omit<Database['public']['Tables']['contact_notes']['Row'], 'id' | 'created_at'>
         Update: Partial<Database['public']['Tables']['contact_notes']['Insert']>
       }
       canned_responses: {

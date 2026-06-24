@@ -1,15 +1,15 @@
 'use client'
 
 import { useRealtimeAIActions } from '@/hooks/use-realtime-ai-actions'
+import { aiActionText } from '@/lib/utils/ai-actions'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Brain, CheckCircle2, XCircle, Clock } from 'lucide-react'
 import { timeAgo } from '@/lib/utils/date'
-import { cn } from '@/lib/utils'
 import type { AIAction } from '@/lib/types/database'
 
 interface AIMindPanelProps {
-  conversationId: string
+  contactId: string
 }
 
 const ACTION_ICONS: Record<string, React.ReactNode> = {
@@ -25,13 +25,14 @@ const ACTION_ICONS: Record<string, React.ReactNode> = {
 
 function ActionItem({ action }: { action: AIAction }) {
   const icon = ACTION_ICONS[action.action_type] ?? '🤖'
+  const text = aiActionText(action) || action.summary
 
   return (
     <div className="flex gap-2.5 py-2.5 border-b border-border/50 last:border-0">
       <span className="text-base shrink-0 mt-0.5">{icon}</span>
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-1">
-          <p className="text-xs font-medium text-foreground leading-snug">{action.summary}</p>
+          <p className="text-xs font-medium text-foreground leading-snug">{text}</p>
           {action.status === 'success' && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />}
           {action.status === 'failure' && <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0 mt-0.5" />}
           {action.status === 'pending' && <Clock className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />}
@@ -50,8 +51,8 @@ function ActionItem({ action }: { action: AIAction }) {
   )
 }
 
-export function AIMindPanel({ conversationId }: AIMindPanelProps) {
-  const { actions, loading } = useRealtimeAIActions(conversationId)
+export function AIMindPanel({ contactId }: AIMindPanelProps) {
+  const { actions, loading } = useRealtimeAIActions(contactId)
 
   return (
     <div className="flex flex-col h-full">
