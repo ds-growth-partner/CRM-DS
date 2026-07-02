@@ -143,6 +143,10 @@ CREATE TABLE IF NOT EXISTS tags (
 CREATE TABLE IF NOT EXISTS contacts (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  -- Columnas de conveniencia (fáciles de escribir desde n8n). Se replican a
+  -- contact_field_values['nombre'/'telefono'] vía trigger; la fuente única para
+  -- leer/editar el perfil sigue siendo contact_field_values (EAV).
+  nombre              TEXT,
   job_title           TEXT,
   country             TEXT,
   wa_id               TEXT,
@@ -1172,3 +1176,51 @@ DROP TRIGGER IF EXISTS trg_mirror_ai_action_to_memory ON ai_actions;
 CREATE TRIGGER trg_mirror_ai_action_to_memory
 AFTER INSERT ON ai_actions
 FOR EACH ROW EXECUTE FUNCTION public.mirror_ai_action_to_memory();
+
+-- ============================================================================
+-- Sync columnas de conveniencia de contacts → contact_field_values (EAV)
+-- ============================================================================
+-- El teléfono de WhatsApp ES el wa_id → se siembra como field 'telefono'.
+CREATE OR REPLACE FUNCTION public.seed_contact_phone_field()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.wa_id IS NOT NULL AND btrim(NEW.wa_id) <> '' THEN
+    INSERT INTO contact_field_values (contact_id, tenant_id, field_key, value)
+    VALUES (NEW.id, NEW.tenant_id, 'telefono', NEW.wa_id)
+    ON CONFLICT (contact_id, field_key) DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_seed_contact_phone_field ON contacts;
+CREATE TRIGGER trg_seed_contact_phone_field
+AFTER INSERT OR UPDATE OF wa_id ON contacts
+FOR EACH ROW EXECUTE FUNCTION public.seed_contact_phone_field();
+
+-- La columna nombre (canal fácil para n8n) se siembra como field 'nombre'.
+-- ON CONFLICT DO NOTHING → no pisa un nombre ya editado a mano en el CRM.
+CREATE OR REPLACE FUNCTION public.seed_contact_name_field()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.nombre IS NOT NULL AND btrim(NEW.nombre) <> '' THEN
+    INSERT INTO contact_field_values (contact_id, tenant_id, field_key, value)
+    VALUES (NEW.id, NEW.tenant_id, 'nombre', btrim(NEW.nombre))
+    ON CONFLICT (contact_id, field_key) DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_seed_contact_name_field ON contacts;
+CREATE TRIGGER trg_seed_contact_name_field
+AFTER INSERT OR UPDATE OF nombre ON contacts
+FOR EACH ROW EXECUTE FUNCTION public.seed_contact_name_field();

@@ -108,11 +108,15 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['tags']['Insert']>
       }
       contacts: {
-        // Solo campos de sistema. El nombre, email, teléfono, empresa y demás
-        // campos de perfil viven en `contact_field_values` (una fila por campo).
+        // Solo campos de sistema. El email, empresa, ciudad y demás campos de
+        // perfil viven en `contact_field_values` (una fila por campo).
+        // `nombre` y `wa_id` son columnas de conveniencia (fácil de escribir desde
+        // n8n) que se replican a contact_field_values['nombre'/'telefono'] vía
+        // trigger; la fuente única para leer/editar sigue siendo el EAV.
         Row: {
           id: string
           tenant_id: string
+          nombre: string | null
           job_title: string | null
           country: string | null
           wa_id: string | null
@@ -127,7 +131,7 @@ export type Database = {
           created_at: string
           updated_at: string
         }
-        Insert: Omit<Database['public']['Tables']['contacts']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Insert: Omit<Database['public']['Tables']['contacts']['Row'], 'id' | 'created_at' | 'updated_at' | 'nombre'> & { nombre?: string | null }
         Update: Partial<Database['public']['Tables']['contacts']['Insert']>
       }
       contact_field_values: {
