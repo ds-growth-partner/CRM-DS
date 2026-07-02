@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { normalizeMediaUrl } from '@/lib/utils/media'
 import type { Message } from '@/lib/types/database'
 import { Bot, User, FileText, Mic, MapPin, CheckCheck, Check, Clock, AlertCircle } from 'lucide-react'
 
@@ -24,7 +25,8 @@ function DeliveryIcon({ status }: { status: Message['delivery_status'] }) {
 }
 
 function MediaContent({ message, isOutbound }: { message: Message; isOutbound: boolean }) {
-  const { content_type, media_url, media_filename } = message
+  const { content_type, media_filename } = message
+  const media_url = normalizeMediaUrl(message.media_url)
 
   if (!media_url) return null
 
