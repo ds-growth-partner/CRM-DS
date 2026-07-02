@@ -31,16 +31,26 @@ export function withFields<T extends Record<string, unknown>>(
   return { ...(rest as T), fields: toFieldMap(contact_field_values) }
 }
 
-/** Nombre a mostrar a partir del mapa de campos. */
-export function contactName(fields?: ContactFields | null): string {
+/**
+ * Nombre a mostrar a partir del mapa de campos.
+ * Cae en cascada: nombre+apellido → telefono → wa_id → 'Sin nombre'.
+ * Pasa `waId` (columna del contacto) para que nunca quede vacío aunque falten
+ * los field_values.
+ */
+export function contactName(fields?: ContactFields | null, waId?: string | null): string {
   const f = fields ?? {}
   const full = [f.nombre, f.apellido].filter(Boolean).join(' ').trim()
-  return full || f.telefono || 'Sin nombre'
+  return full || f.telefono || (waId ?? '').trim() || 'Sin nombre'
+}
+
+/** Teléfono/WhatsApp a mostrar: field 'telefono' → wa_id del contacto. */
+export function contactPhone(fields?: ContactFields | null, waId?: string | null): string {
+  return (fields?.telefono ?? '').trim() || (waId ?? '').trim() || ''
 }
 
 /** Inicial(es) para el avatar. */
-export function contactInitials(fields?: ContactFields | null): string {
-  const name = contactName(fields)
+export function contactInitials(fields?: ContactFields | null, waId?: string | null): string {
+  const name = contactName(fields, waId)
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?'
 }
 

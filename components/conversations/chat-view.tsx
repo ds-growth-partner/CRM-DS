@@ -14,7 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import type { ConversationWithContact, User, Message, AIAction } from '@/lib/types/database'
 import { formatDate } from '@/lib/utils/date'
-import { contactName, contactInitials } from '@/lib/utils/contact-fields'
+import { contactName, contactInitials, contactPhone } from '@/lib/utils/contact-fields'
 import { Bot, User as UserIcon, UserCheck, ChevronDown, ArrowLeft, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSupabase } from '@/providers/supabase-provider'
@@ -101,8 +101,9 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
 
 
 
-  const fullName = contactName(contact.fields)
+  const fullName = contactName(contact.fields, contact.wa_id)
   const cfields = contact.fields ?? {}
+  const phone = contactPhone(cfields, contact.wa_id)
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -121,7 +122,7 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
           {/* Avatar */}
           <div className="relative shrink-0">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-primary text-sm font-semibold ring-1 ring-primary/25">
-              {contactInitials(cfields)}
+              {contactInitials(cfields, contact.wa_id)}
             </div>
             <span className={cn(
               'absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-1 ring-background',
@@ -132,7 +133,9 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
           {/* Info */}
           <div className="min-w-0">
             <p className="text-sm font-semibold text-foreground truncate">{fullName}</p>
-            <p className="text-[11px] text-muted-foreground">{cfields.telefono}</p>
+            {phone && phone !== fullName && (
+              <p className="text-[11px] text-muted-foreground tabular-nums">{phone}</p>
+            )}
           </div>
 
           {/* AI/Human badge */}

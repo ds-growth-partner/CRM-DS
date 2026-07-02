@@ -2,8 +2,7 @@
 
 import { cn } from '@/lib/utils'
 import { formatTime } from '@/lib/utils/date'
-import { getInitials } from '@/lib/utils/format'
-import { contactName } from '@/lib/utils/contact-fields'
+import { contactName, contactPhone, contactInitials } from '@/lib/utils/contact-fields'
 import type { ConversationWithContact } from '@/lib/types/database'
 import { Bot, User } from 'lucide-react'
 
@@ -15,7 +14,11 @@ interface ConversationItemProps {
 
 export function ConversationItem({ conversation, isSelected, onClick }: ConversationItemProps) {
   const contact = conversation.contact
-  const fullName = contactName(contact.fields)
+  const fullName = contactName(contact.fields, contact.wa_id)
+  const phone = contactPhone(contact.fields, contact.wa_id)
+  // Solo mostramos el teléfono aparte cuando el título es un nombre real
+  // (si no hay nombre, el título ya es el número → evitamos duplicarlo).
+  const showPhone = phone && phone !== fullName
   const tags = (contact as { tags?: { id: string; name: string; color: string }[] }).tags ?? []
 
   return (
@@ -36,7 +39,7 @@ export function ConversationItem({ conversation, isSelected, onClick }: Conversa
             ? 'bg-primary/20 text-primary ring-1 ring-primary/30'
             : 'bg-primary/10 text-primary'
         )}>
-          {getInitials(fullName)}
+          {contactInitials(contact.fields, contact.wa_id)}
         </div>
         {/* AI/Human dot */}
         <span className={cn(
@@ -68,6 +71,12 @@ export function ConversationItem({ conversation, isSelected, onClick }: Conversa
             </span>
           )}
         </div>
+
+        {showPhone && (
+          <p className="text-[11px] text-muted-foreground/70 tabular-nums truncate leading-tight -mt-0.5 mb-0.5">
+            {phone}
+          </p>
+        )}
 
         <p className="text-xs text-muted-foreground truncate leading-relaxed">
           {conversation.last_message_direction === 'outbound' && (
