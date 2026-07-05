@@ -58,7 +58,9 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
       const contactData = c.contact as any
       const contact = contactData ? {
         ...contactData,
-        tags: contactData.contact_tags?.map((ct: any) => ct.tag) ?? [],
+        // filter(Boolean): un tag oculto por RLS llega como { tag: null } en el
+        // embed → sin filtrar, romper ía el render (lectura de .color sobre null).
+        tags: contactData.contact_tags?.map((ct: any) => ct.tag).filter(Boolean) ?? [],
         fields: toFieldMap(contactData.contact_field_values),
       } : null
       

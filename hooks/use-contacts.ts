@@ -63,7 +63,7 @@ export function useContacts(filters: ContactFilters = {}) {
     const rows = (data ?? []) as unknown as Record<string, unknown>[]
     let mapped = rows.map(c => ({
       ...c,
-      tags: (c.contact_tags as { tag: unknown }[] | undefined)?.map(ct => ct.tag) ?? [],
+      tags: (c.contact_tags as { tag: unknown }[] | undefined)?.map(ct => ct.tag).filter(Boolean) ?? [],
       fields: toFieldMap(c.contact_field_values as { field_key: string; value: string | null }[] | undefined),
     })) as unknown as ContactWithDetails[]
 

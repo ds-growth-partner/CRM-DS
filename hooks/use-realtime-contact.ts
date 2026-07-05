@@ -29,7 +29,7 @@ export function useRealtimeContact(contactId: string | null) {
       .single()
 
     if (data) {
-      const tags = (data.contact_tags as unknown as { tag: Tag }[])?.map(ct => ct.tag) ?? []
+      const tags = (data.contact_tags as unknown as { tag: Tag }[])?.map(ct => ct.tag).filter(Boolean) ?? []
       const fields = toFieldMap((data as { contact_field_values?: { field_key: string; value: string | null }[] }).contact_field_values)
       setContact({ ...data, tags, funnel_stage: data.funnel_stage, fields } as ContactFull)
     }

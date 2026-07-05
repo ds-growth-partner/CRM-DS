@@ -196,6 +196,32 @@ CREATE TABLE IF NOT EXISTS contact_tags (
   PRIMARY KEY (contact_id, tag_id)
 );
 
+-- Guard: un tag solo puede asignarse a un contacto del MISMO tenant. Si se cuela
+-- un cross-tenant, RLS oculta el tag ajeno en el embed (llega como { tag: null })
+-- y rompe el render de la lista de conversaciones.
+CREATE OR REPLACE FUNCTION public.enforce_contact_tag_same_tenant()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_contact_tenant uuid;
+  v_tag_tenant uuid;
+BEGIN
+  SELECT tenant_id INTO v_contact_tenant FROM public.contacts WHERE id = NEW.contact_id;
+  SELECT tenant_id INTO v_tag_tenant     FROM public.tags     WHERE id = NEW.tag_id;
+  IF v_contact_tenant IS DISTINCT FROM v_tag_tenant THEN
+    RAISE EXCEPTION 'contact_tags cross-tenant: contacto % (tenant %) vs tag % (tenant %)',
+      NEW.contact_id, v_contact_tenant, NEW.tag_id, v_tag_tenant;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_enforce_contact_tag_same_tenant ON contact_tags;
+CREATE TRIGGER trg_enforce_contact_tag_same_tenant
+BEFORE INSERT OR UPDATE ON contact_tags
+FOR EACH ROW EXECUTE FUNCTION public.enforce_contact_tag_same_tenant();
+
 
 -- ─────────────────────────────────────────────
 -- CONVERSATIONS

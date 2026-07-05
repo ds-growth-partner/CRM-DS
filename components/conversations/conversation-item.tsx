@@ -19,7 +19,7 @@ export function ConversationItem({ conversation, isSelected, onClick }: Conversa
   // Solo mostramos el teléfono aparte cuando el título es un nombre real
   // (si no hay nombre, el título ya es el número → evitamos duplicarlo).
   const showPhone = phone && phone !== fullName
-  const tags = (contact as { tags?: { id: string; name: string; color: string }[] }).tags ?? []
+  const tags = ((contact as { tags?: ({ id: string; name: string; color: string } | null)[] }).tags ?? []).filter(Boolean) as { id: string; name: string; color: string }[]
 
   return (
     <button
