@@ -722,7 +722,7 @@ export default function NewCampaignPage() {
           template_variables: variableMappings.filter(Boolean).length > 0
             ? variableMappings.filter(Boolean)
             : null,
-          target_count: selectedContactsList.length,
+          total_contacts: selectedContactsList.length,
           sent_count: 0,
           delivered_count: 0,
           read_count: 0,
@@ -775,7 +775,7 @@ export default function NewCampaignPage() {
           template_variables: variableMappings.filter(Boolean).length > 0
             ? variableMappings.filter(Boolean)
             : null,
-          target_count: selectedContactsList.length,
+          total_contacts: selectedContactsList.length,
           sent_count: 0,
           delivered_count: 0,
           read_count: 0,

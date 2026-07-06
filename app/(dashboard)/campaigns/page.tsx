@@ -70,7 +70,7 @@ export default function CampaignsPage() {
           <div className="space-y-3 max-w-4xl">
             {campaigns.map(campaign => {
               const config = STATUS_CONFIG[campaign.status] ?? STATUS_CONFIG.draft
-              const total = campaign.target_count ?? 0
+              const total = campaign.total_contacts ?? 0
               const sent = campaign.sent_count ?? 0
               const delivered = campaign.delivered_count ?? 0
               const read = campaign.read_count ?? 0

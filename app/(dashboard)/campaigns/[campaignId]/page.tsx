@@ -33,6 +33,12 @@ const RECIPIENT_STATUS_CONFIG: Record<string, { label: string; class: string }> 
   failed: { label: 'Fallido', class: 'bg-red-500/10 text-red-400' },
 }
 
+// La campaña guarda template_name + template_variables (mapeo de variables). El
+// idioma/cuerpo/conteo de variables viven en hsm_templates → se traen por el FK.
+type CampaignDetail = Campaign & {
+  template?: { language: string | null; body_text: string | null; variables_count: number | null } | null
+}
+
 interface RecipientRow {
   id: string
   contact_id: string
@@ -73,7 +79,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ campa
   const { supabase } = useSupabase()
   const { tenant } = useAuth()
 
-  const [campaign, setCampaign] = useState<Campaign | null>(null)
+  const [campaign, setCampaign] = useState<CampaignDetail | null>(null)
   const [recipients, setRecipients] = useState<RecipientRow[]>([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
@@ -81,10 +87,10 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ campa
   async function loadCampaign() {
     const { data: campaignData } = await supabase
       .from('campaigns')
-      .select('*')
+      .select('*, template:hsm_templates!campaigns_template_id_fkey(language, body_text, variables_count)')
       .eq('id', campaignId)
       .single()
-    setCampaign(campaignData as Campaign | null)
+    setCampaign(campaignData as unknown as CampaignDetail | null)
 
     const { data: recipientsData } = await supabase
       .from('campaign_messages')
@@ -123,10 +129,10 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ campa
         campaign_id: campaign.id,
         campaign_name: campaign.name,
         template_name: campaign.template_name ?? '',
-        template_language: campaign.template_language ?? '',
-        template_body: campaign.template_body ?? '',
-        template_variables_count: campaign.template_variables_count ?? 0,
-        variable_mappings: (campaign.variable_mappings as string[] | null) ?? [],
+        template_language: campaign.template?.language ?? '',
+        template_body: campaign.template?.body_text ?? '',
+        template_variables_count: campaign.template?.variables_count ?? 0,
+        variable_mappings: (campaign.template_variables as string[] | null) ?? [],
         contacts: recipients.map(r => ({
           id: r.contact_id,
           wa_id: r.contact_wa_id,
@@ -180,7 +186,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ campa
 
   const config = STATUS_CONFIG[campaign.status] ?? STATUS_CONFIG.draft
   const StatusIcon = config.icon
-  const total = campaign.target_count ?? 0
+  const total = campaign.total_contacts ?? 0
   const sent = campaign.sent_count ?? 0
   const delivered = campaign.delivered_count ?? 0
   const read = campaign.read_count ?? 0
@@ -290,10 +296,10 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ campa
                 </div>
               </div>
             )}
-            {campaign.template_language && (
+            {campaign.template?.language && (
               <div>
                 <p className="text-[10px] text-muted-foreground mb-0.5">Idioma</p>
-                <p className="text-foreground">{campaign.template_language}</p>
+                <p className="text-foreground">{campaign.template.language}</p>
               </div>
             )}
             {campaign.created_at && (
@@ -304,11 +310,11 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ campa
             )}
           </div>
 
-          {(campaign.variable_mappings as string[] | null) && (campaign.variable_mappings as string[]).length > 0 && (
+          {(campaign.template_variables as string[] | null) && (campaign.template_variables as string[]).length > 0 && (
             <div>
               <p className="text-[10px] text-muted-foreground mb-1.5">Mapeo de variables</p>
               <div className="flex flex-wrap gap-2">
-                {(campaign.variable_mappings as string[]).map((v, i) => (
+                {(campaign.template_variables as string[]).map((v, i) => (
                   <span key={i} className="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-2.5 py-1 font-mono">
                     Variable {i + 1} → {v}
                   </span>

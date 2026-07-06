@@ -45,17 +45,29 @@ export default function TemplatesPage() {
   async function handleSync() {
     setSyncing(true)
     try {
-      const res = await fetch('/api/meta/templates/sync', {
-        method: 'POST',
-      })
-      if (res.ok) {
-        // Esperar un momento para que n8n termine de escribir en Supabase
-        await new Promise(r => setTimeout(r, 2000))
-        await loadTemplates()
-        toast.success('Plantillas sincronizadas con Meta')
-      } else {
-        toast.error('Error al sincronizar plantillas')
+      const res = await fetch('/api/meta/templates/sync', { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        toast.error(data?.error ?? 'Error al sincronizar plantillas')
+        return
       }
+
+      // El endpoint ya devuelve la lista actualizada desde la BD.
+      if (Array.isArray(data.templates)) {
+        setTemplates(data.templates)
+      } else {
+        await loadTemplates()
+      }
+
+      const count = Array.isArray(data.templates) ? data.templates.length : templates.length
+      toast.success(
+        data.source === 'meta'
+          ? `Sincronizado con Meta (${count} plantillas)`
+          : data.source === 'n8n'
+          ? `Sincronización solicitada a n8n (${count} plantillas)`
+          : `${count} plantillas cargadas`
+      )
     } catch {
       toast.error('Error al sincronizar plantillas')
     } finally {

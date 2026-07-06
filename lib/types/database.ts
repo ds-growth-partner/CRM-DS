@@ -285,13 +285,9 @@ export type Database = {
           description: string | null
           template_id: string | null
           template_name: string | null
-          template_language: string | null
-          template_body: string | null
-          template_variables_count: number
           template_variables: Json | null
-          variable_mappings: string[] | null
           segment_filters: Json | null
-          target_count: number
+          total_contacts: number
           sent_count: number
           delivered_count: number
           read_count: number
