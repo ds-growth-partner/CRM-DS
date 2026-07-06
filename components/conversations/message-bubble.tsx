@@ -1,18 +1,11 @@
 import { cn } from '@/lib/utils'
 import { normalizeMediaUrl } from '@/lib/utils/media'
+import { formatTime } from '@/lib/utils/date'
 import type { Message } from '@/lib/types/database'
 import { Bot, User, FileText, Mic, MapPin, CheckCheck, Check, Clock, AlertCircle } from 'lucide-react'
 
 interface MessageBubbleProps {
   message: Message
-}
-
-function formatTime(ts: string) {
-  return new Date(ts).toLocaleTimeString('es-CO', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
 }
 
 function DeliveryIcon({ status }: { status: Message['delivery_status'] }) {

@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { formatTime } from '@/lib/utils/date'
 import type { N8nChatHistory, N8nMessage } from '@/lib/types/database'
 import { Bot, User, Search, FileText, Play, Mic } from 'lucide-react'
 
@@ -65,14 +66,6 @@ function parseMessage(msg: N8nMessage): ParsedMessage {
     mediaUrl,
     mediaFilename,
   }
-}
-
-function formatTime(ts: string) {
-  return new Date(ts).toLocaleTimeString('es-CO', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
 }
 
 /** Renderiza el contenido multimedia del mensaje */

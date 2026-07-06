@@ -21,8 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { toast } from 'sonner'
-import { formatDate } from '@/lib/utils/date'
-import { format } from 'date-fns'
+import { formatDate, formatTime } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import type { FunnelStage, PhaseTransition, Conversation, Appointment } from '@/lib/types/database'
 import { contactName, contactInitials } from '@/lib/utils/contact-fields'
@@ -693,8 +692,6 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
       ) : (
         <div className="space-y-3">
           {appointments.map(appt => {
-            const start = new Date(appt.start_time)
-            const end = new Date(appt.end_time)
             return (
               <div key={appt.id} className="border border-border rounded-xl p-4 bg-card/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:bg-card">
                 <div>
@@ -706,7 +703,7 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
                     </span>
                     <span className="flex items-center gap-1">
                       <Clock className="h-3.5 w-3.5" />
-                      {formatDate(appt.start_time).split(' ')[1]} - {formatDate(appt.end_time).split(' ')[1] || format(end, 'HH:mm')}
+                      {formatTime(appt.start_time)} - {formatTime(appt.end_time)}
                     </span>
                   </div>
                   {appt.description && (
