@@ -8,7 +8,7 @@ import { useAuth } from '@/providers/auth-provider'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   MessageSquare,
-  Users,
+  Filter,
   Calendar,
   FileText,
   BarChart3,
@@ -26,8 +26,8 @@ import { useClerk } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 
 const NAV_ITEMS = [
+  { href: '/contacts',      label: 'Embudo',         icon: Filter },
   { href: '/conversations', label: 'Conversaciones', icon: MessageSquare },
-  { href: '/contacts',      label: 'Contactos',      icon: Users },
   { href: '/services',      label: 'Servicios',      icon: Package },
   { href: '/calendar',      label: 'Calendario',     icon: Calendar },
   { href: '/templates',      label: 'Plantillas',     icon: FileText },

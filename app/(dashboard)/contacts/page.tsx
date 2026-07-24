@@ -20,7 +20,8 @@ import type { ContactFilters } from '@/lib/types/shared'
 import { contactName } from '@/lib/utils/contact-fields'
 
 export default function ContactsPage() {
-  const [view, setView] = useState<'table' | 'kanban'>('table')
+  // El embudo (kanban) es la vista principal del CRM; la tabla queda como alterna.
+  const [view, setView] = useState<'table' | 'kanban'>('kanban')
   const [search, setSearch] = useState('')
   const [importOpen, setImportOpen] = useState(false)
   const debouncedSearch = useDebounce(search, 300)
@@ -96,7 +97,7 @@ export default function ContactsPage() {
       {/* Topbar */}
       <div className="flex items-center gap-3 px-6 py-3.5 border-b border-border bg-background/80 backdrop-blur-md z-20">
         <div>
-          <h1 className="text-base font-semibold text-foreground leading-tight">Contactos</h1>
+          <h1 className="text-base font-semibold text-foreground leading-tight">Embudo</h1>
           <p className="text-[11px] text-muted-foreground">{total} contacto{total !== 1 ? 's' : ''}</p>
         </div>
 

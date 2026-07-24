@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 
 export default function RootPage() {
-  redirect('/conversations')
+  // El embudo (vista kanban de contactos) es la página principal del CRM.
+  redirect('/contacts')
 }
