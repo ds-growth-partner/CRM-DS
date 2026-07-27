@@ -53,7 +53,7 @@ export function TenantSwitcher() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-9 z-50 w-64 bg-popover border border-border rounded-xl shadow-xl overflow-hidden animate-slide-up">
+        <div className="absolute right-0 top-9 z-[60] w-64 bg-popover border border-border rounded-xl shadow-xl overflow-hidden animate-slide-up">
           <div className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-muted-foreground border-b border-border">
             <ShieldCheck className="h-3.5 w-3.5 text-primary" />
             Ver como cuenta

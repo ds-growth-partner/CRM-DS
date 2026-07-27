@@ -13,7 +13,7 @@ export function Topbar() {
   const { toggleMobileSidebar } = useUIStore()
 
   return (
-    <header className="flex h-14 items-center gap-3 border-b border-border bg-background/80 backdrop-blur-md px-4 shrink-0">
+    <header className="relative z-50 flex h-14 items-center gap-3 border-b border-border bg-background/80 backdrop-blur-md px-4 shrink-0">
       {/* Hamburger — solo en mobile */}
       <button
         onClick={toggleMobileSidebar}
