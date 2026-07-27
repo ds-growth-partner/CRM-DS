@@ -2,18 +2,30 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSupabase } from '@/providers/supabase-provider'
+import { useAuth } from '@/providers/auth-provider'
 import type { ContactWithDetails } from '@/lib/types/database'
 import type { ContactFilters } from '@/lib/types/shared'
 import { toFieldMap, contactName, CONTACT_FIELDS_EMBED } from '@/lib/utils/contact-fields'
 
 export function useContacts(filters: ContactFilters = {}) {
   const { supabase } = useSupabase()
+  // Cuenta activa: para super admins es la que están "viendo como". Filtramos
+  // explícitamente por tenant porque un super admin, sin este filtro, vería los
+  // contactos de TODAS las cuentas (el RLS se lo permite).
+  const { tenant } = useAuth()
+  const tenantId = tenant?.id
   const [contacts, setContacts] = useState<ContactWithDetails[]>([])
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
 
   const loadContacts = useCallback(async () => {
+    if (!tenantId) {
+      setContacts([])
+      setTotal(0)
+      setLoading(false)
+      return
+    }
     setLoading(true)
 
     let selectStr = `
@@ -38,6 +50,7 @@ export function useContacts(filters: ContactFilters = {}) {
     let query = supabase
       .from('contacts')
       .select(selectStr, { count: 'exact' })
+      .eq('tenant_id', tenantId)
       .order('updated_at', { ascending: false })
 
     if (filters.funnel_stage_id) query = query.eq('funnel_stage_id', filters.funnel_stage_id)
@@ -89,7 +102,7 @@ export function useContacts(filters: ContactFilters = {}) {
     setContacts(mapped)
     setTotal(filteredByFields ? mapped.length : (count ?? 0))
     setLoading(false)
-  }, [supabase, JSON.stringify(filters)]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [supabase, tenantId, JSON.stringify(filters)]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadContacts()

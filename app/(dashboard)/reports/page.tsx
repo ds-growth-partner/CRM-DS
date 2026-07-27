@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSupabase } from '@/providers/supabase-provider'
+import { useAuth } from '@/providers/auth-provider'
 import type { DailyMetrics } from '@/lib/types/database'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -38,25 +39,31 @@ const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 
 export default function ReportsPage() {
   const { supabase } = useSupabase()
+  const { tenant } = useAuth()
+  const tenantId = tenant?.id
   const [metrics, setMetrics] = useState<DailyMetrics[]>([])
   const [loading, setLoading] = useState(true)
   const [contactCount, setContactCount] = useState(0)
   const [stageStats, setStageStats] = useState<{ name: string; count: number }[]>([])
 
   useEffect(() => {
+    if (!tenantId) return
     const from = format(subDays(new Date(), 30), 'yyyy-MM-dd')
     Promise.all([
       supabase
         .from('daily_metrics')
         .select('*')
+        .eq('tenant_id', tenantId)
         .gte('date', from)
         .order('date'),
       supabase
         .from('contacts')
-        .select('*', { count: 'exact', head: true }),
+        .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId),
       supabase
         .from('contacts')
         .select('funnel_stage:funnel_stages(name)')
+        .eq('tenant_id', tenantId)
         .not('funnel_stage_id', 'is', null),
     ]).then(([{ data: metricsData }, { count }, { data: contactsWithStage }]) => {
       setMetrics(metricsData ?? [])
@@ -72,7 +79,7 @@ export default function ReportsPage() {
       setStageStats(Object.entries(stageCounts).map(([name, count]) => ({ name, count })))
       setLoading(false)
     })
-  }, [supabase])
+  }, [supabase, tenantId])
 
   const totalMessages = metrics.reduce((a, m) => a + m.messages_inbound + m.messages_outbound, 0)
   const totalConversations = metrics.reduce((a, m) => a + m.conversations_new, 0)

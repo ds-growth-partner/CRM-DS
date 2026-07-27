@@ -8,6 +8,7 @@ import { ImportContactsDialog } from '@/components/contacts/import-contacts-dial
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useSupabase } from '@/providers/supabase-provider'
+import { useAuth } from '@/providers/auth-provider'
 import { LayoutGrid, Table2, Search, Download, Upload, Plus } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -34,17 +35,20 @@ export default function ContactsPage() {
   const { contacts, loading, total, refetch } = useContacts(activeFilters)
   
   const { supabase } = useSupabase()
+  const { tenant } = useAuth()
+  const tenantId = tenant?.id
   const [stages, setStages] = useState<FunnelStage[]>([])
   const [tags, setTags] = useState<TagType[]>([])
 
   useEffect(() => {
-    supabase.from('funnel_stages').select('*').order('position').then(({ data }) => {
+    if (!tenantId) return
+    supabase.from('funnel_stages').select('*').eq('tenant_id', tenantId).order('position').then(({ data }) => {
       setStages(data ?? [])
     })
-    supabase.from('tags').select('*').order('name').then(({ data }) => {
+    supabase.from('tags').select('*').eq('tenant_id', tenantId).order('name').then(({ data }) => {
       setTags(data ?? [])
     })
-  }, [supabase])
+  }, [supabase, tenantId])
 
   // Clear selection when filters change or view changes
   useEffect(() => {

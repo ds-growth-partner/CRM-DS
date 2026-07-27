@@ -20,7 +20,7 @@ export default function AdminTenantPage() {
 
   useEffect(() => {
     if (!authLoading && !isSuperAdmin) {
-      router.replace('/conversations')
+      router.replace('/contacts')
     }
   }, [authLoading, isSuperAdmin, router])
 

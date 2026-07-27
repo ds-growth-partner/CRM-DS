@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Search, Bell, Menu } from 'lucide-react'
 import { ThemeToggle } from './theme-toggle'
+import { TenantSwitcher } from './tenant-switcher'
 import { useUIStore } from '@/stores/ui-store'
 
 export function Topbar() {
@@ -30,6 +31,8 @@ export function Topbar() {
       </div>
 
       <div className="ml-auto flex items-center gap-1.5">
+        {/* Super admin: ver como otra cuenta */}
+        <TenantSwitcher />
         <ThemeToggle />
         <Button
           variant="ghost"

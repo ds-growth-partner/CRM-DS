@@ -21,7 +21,7 @@ export default function AdminPage() {
   // Guard: kick non-super-admins out
   useEffect(() => {
     if (!authLoading && !isSuperAdmin) {
-      router.replace('/conversations')
+      router.replace('/contacts')
     }
   }, [authLoading, isSuperAdmin, router])
 

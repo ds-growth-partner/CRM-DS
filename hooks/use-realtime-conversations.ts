@@ -18,9 +18,19 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
   const retryCountRef = useRef(0)
 
   const loadConversations = useCallback(async () => {
+    // Sin cuenta activa aún → no cargamos (evita que un super admin vea, por un
+    // instante, las conversaciones de todas las cuentas mezcladas).
+    if (!tenantId) {
+      setConversations([])
+      setLoading(false)
+      return
+    }
     setLoading(true)
 
-    // Load all conversations with their contacts, ordered by last_message_at
+    // Load all conversations with their contacts, ordered by last_message_at.
+    // Filtramos por tenant_id explícitamente: para super admins el RLS no aísla
+    // (pueden leer todas las cuentas), así que este filtro los limita a la
+    // cuenta que están "viendo como".
     const { data: convs, error } = await supabase
       .from('conversations')
       .select(`
@@ -33,6 +43,7 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
           ${CONTACT_FIELDS_EMBED}
         )
       `)
+      .eq('tenant_id', tenantId)
       .order('last_message_at', { ascending: false, nullsFirst: false })
 
     if (error) {
@@ -105,7 +116,7 @@ export function useRealtimeConversations(filters: ConversationFilters = {}) {
 
     setConversations(result)
     setLoading(false)
-  }, [supabase, filters])
+  }, [supabase, tenantId, filters])
 
   useEffect(() => {
     loadConversations()

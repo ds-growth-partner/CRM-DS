@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSupabase } from '@/providers/supabase-provider'
+import { useAuth } from '@/providers/auth-provider'
 import type { HSMTemplate } from '@/lib/types/database'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -27,20 +28,24 @@ const CATEGORY_LABELS = {
 
 export default function TemplatesPage() {
   const { supabase } = useSupabase()
+  const { tenant } = useAuth()
+  const tenantId = tenant?.id
   const [templates, setTemplates] = useState<HSMTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
 
   async function loadTemplates() {
+    if (!tenantId) return
     const { data } = await supabase
       .from('hsm_templates')
       .select('*')
+      .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
     setTemplates(data ?? [])
     setLoading(false)
   }
 
-  useEffect(() => { loadTemplates() }, [])
+  useEffect(() => { loadTemplates() }, [tenantId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSync() {
     setSyncing(true)

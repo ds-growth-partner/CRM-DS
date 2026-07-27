@@ -642,17 +642,22 @@ export default function NewCampaignPage() {
     tag_ids: [],
   })
 
+  const tenantId = tenant?.id
+
   useEffect(() => {
-    supabase.from('hsm_templates').select('*').order('name').then(({ data }) => {
+    if (!tenantId) return
+    supabase.from('hsm_templates').select('*').eq('tenant_id', tenantId).order('name').then(({ data }) => {
       setTemplates(data ?? [])
       setTemplatesLoading(false)
     })
-  }, [supabase])
+  }, [supabase, tenantId])
 
   useEffect(() => {
+    if (!tenantId) return
     supabase
       .from('contacts')
       .select(`*, funnel_stage:funnel_stages(*), assigned_user:users!contacts_assigned_to_fkey(id, full_name, avatar_url), contact_tags(tag:tags(*)), ${CONTACT_FIELDS_EMBED}`)
+      .eq('tenant_id', tenantId)
       .order('updated_at', { ascending: false })
       .limit(1000)
       .then(({ data }) => {
@@ -665,14 +670,14 @@ export default function NewCampaignPage() {
         setContactsLoading(false)
       })
 
-    supabase.from('funnel_stages').select('*').order('position').then(({ data }) => {
+    supabase.from('funnel_stages').select('*').eq('tenant_id', tenantId).order('position').then(({ data }) => {
       setStages(data ?? [])
     })
 
-    supabase.from('tags').select('*').order('name').then(({ data }) => {
+    supabase.from('tags').select('*').eq('tenant_id', tenantId).order('name').then(({ data }) => {
       setAllTags(data ?? [])
     })
-  }, [supabase])
+  }, [supabase, tenantId])
 
   const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([])
 

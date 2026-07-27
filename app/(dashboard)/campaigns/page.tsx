@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSupabase } from '@/providers/supabase-provider'
+import { useAuth } from '@/providers/auth-provider'
 import type { Campaign } from '@/lib/types/database'
 import { Button } from '@/components/ui/button'
 import { Plus, Send, BarChart3, Users, CheckCheck, Eye } from 'lucide-react'
@@ -21,19 +22,23 @@ const STATUS_CONFIG: Record<string, { label: string; class: string }> = {
 
 export default function CampaignsPage() {
   const { supabase } = useSupabase()
+  const { tenant } = useAuth()
+  const tenantId = tenant?.id
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!tenantId) return
     supabase
       .from('campaigns')
       .select('*')
+      .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
       .then(({ data }) => {
         setCampaigns(data ?? [])
         setLoading(false)
       })
-  }, [supabase])
+  }, [supabase, tenantId])
 
   return (
     <div className="flex flex-col h-full">
