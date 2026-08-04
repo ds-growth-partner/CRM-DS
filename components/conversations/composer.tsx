@@ -190,6 +190,9 @@ export function Composer({
               wa_id: waId,
               message_type: 'text',
               message: resolved,
+              // Enviado por un humano: n8n debe guardarlo en la memoria del bot
+              // (n8n_chat_histories) para que la IA tenga contexto de todo.
+              sender_type: 'human',
               contact: contact ? {
                 id: contact.id,
                 wa_id: contact.wa_id,
@@ -231,6 +234,8 @@ export function Composer({
                 media_filename: file.name,
                 media_mime_type: file.type,
                 message: `[${ct}] ${file.name}`,
+                // Enviado por un humano: n8n debe guardarlo en la memoria del bot.
+                sender_type: 'human',
                 contact: contact ? {
                   id: contact.id,
                   wa_id: contact.wa_id,

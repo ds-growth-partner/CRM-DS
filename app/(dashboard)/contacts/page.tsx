@@ -108,7 +108,7 @@ export default function ContactsPage() {
         <div className="relative ml-4 flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nombre, empresa..."
+            placeholder="Buscar por nombre, teléfono, email, cualquier campo..."
             className="pl-9 h-8 text-sm bg-muted/40 border-transparent focus:border-primary/40 transition-colors"
             value={search}
             onChange={e => setSearch(e.target.value)}

@@ -92,7 +92,10 @@ export function useContacts(filters: ContactFilters = {}) {
         if (phoneTerm && !(f.telefono ?? '').toLowerCase().includes(phoneTerm)) return false
         if (emailTerm && !(f.email ?? '').toLowerCase().includes(emailTerm)) return false
         if (term) {
-          const hay = `${contactName(f)} ${f.email ?? ''} ${f.telefono ?? ''} ${f.empresa ?? ''}`.toLowerCase()
+          // Buscar por CUALQUIER atributo: nombre + todos los valores de campos
+          // personalizados (empresa, ciudad, documento, etc.) + wa_id + notas.
+          const allValues = Object.values(f).filter(Boolean).join(' ')
+          const hay = `${contactName(f)} ${allValues} ${(c as { wa_id?: string }).wa_id ?? ''} ${(c as { notes?: string }).notes ?? ''}`.toLowerCase()
           if (!hay.includes(term)) return false
         }
         return true

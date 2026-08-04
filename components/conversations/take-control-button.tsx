@@ -64,6 +64,20 @@ export function TakeControlButton({
           })
       }
 
+      // Notificar a n8n en tiempo real (best-effort): que sepa de inmediato si
+      // debe responder o no. La fuente de verdad sigue siendo el flag ai_active
+      // en la BD; si n8n no está configurado, esto falla en silencio sin romper
+      // el toggle.
+      fetch(newAiActive ? '/api/webhooks/n8n/release-control' : '/api/webhooks/n8n/take-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          contact_id: contactId,
+          ai_active: newAiActive,
+        }),
+      }).catch(() => {})
+
       setLocalAiActive(newAiActive)
       onToggle?.(newAiActive)
       toast.success(newAiActive ? 'Control devuelto a la IA' : 'Control tomado por humano')

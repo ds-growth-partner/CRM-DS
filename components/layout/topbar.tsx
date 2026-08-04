@@ -2,8 +2,7 @@
 
 import { useAuth } from '@/providers/auth-provider'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Search, Bell, Menu } from 'lucide-react'
+import { Bell, Menu } from 'lucide-react'
 import { ThemeToggle } from './theme-toggle'
 import { TenantSwitcher } from './tenant-switcher'
 import { useUIStore } from '@/stores/ui-store'
@@ -22,13 +21,8 @@ export function Topbar() {
         <Menu className="h-4 w-4" />
       </button>
 
-      <div className="relative flex-1 max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-        <Input
-          placeholder="Buscar contacto, conversación..."
-          className="pl-9 h-8 bg-muted/50 border-transparent focus:border-primary/40 text-sm transition-colors"
-        />
-      </div>
+      {/* La búsqueda vive en cada página (embudo, conversaciones…) donde sí filtra
+          datos reales. Aquí no repetimos una barra global que no hacía nada. */}
 
       <div className="ml-auto flex items-center gap-1.5">
         {/* Super admin: ver como otra cuenta */}
