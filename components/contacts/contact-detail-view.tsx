@@ -11,6 +11,7 @@ import { useAuth } from '@/providers/auth-provider'
 
 import { MessageBubble } from '@/components/conversations/message-bubble'
 import { Composer } from '@/components/conversations/composer'
+import { TakeControlButton } from '@/components/conversations/take-control-button'
 import { ContactDeals } from '@/components/contacts/contact-deals'
 import { TagBadge } from '@/components/shared/tag-badge'
 import { LeadScoreBar } from '@/components/shared/lead-score-bar'
@@ -108,6 +109,7 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
   const [stages, setStages] = useState<FunnelStage[]>([])
   const [transitions, setTransitions] = useState<PhaseTransition[]>([])
   const [conversation, setConversation] = useState<Conversation | null>(null)
+  const [aiActive, setAiActive] = useState(false)
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false)
   const [stageMenuOpen, setStageMenuOpen] = useState(false)
   const [savingField, setSavingField] = useState<string | null>(null)
@@ -159,7 +161,12 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
       .order('last_message_at', { ascending: false })
       .limit(1)
       .maybeSingle()
-      .then(({ data }) => setConversation(data))
+      .then(({ data }) => {
+        setConversation(data)
+        // En el mismo batch que setConversation, para que el TakeControlButton
+        // (que fija su estado interno al montar) arranque con el valor correcto.
+        if (data) setAiActive(data.ai_active)
+      })
   }, [supabase, contactId])
 
   // Load appointments
@@ -582,6 +589,28 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
     <div className="flex flex-col h-full overflow-hidden">
       {contact.wa_id ? (
         <>
+          {/* Barra de control IA: mismo botón que en Chats en vivo, para tomar o
+              devolver el control desde el embudo. */}
+          {conversation && (
+            <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-border/60 shrink-0 bg-background/60">
+              <span className={cn(
+                'flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border',
+                aiActive
+                  ? 'bg-emerald-500/8 text-emerald-500 border-emerald-500/20'
+                  : 'bg-blue-500/8 text-blue-500 border-blue-500/20'
+              )}>
+                {aiActive ? <Bot className="h-2.5 w-2.5" /> : <UserIcon className="h-2.5 w-2.5" />}
+                {aiActive ? 'IA activa' : 'Control humano'}
+              </span>
+              <TakeControlButton
+                conversationId={conversation.id}
+                contactId={contactId}
+                aiActive={aiActive}
+                onToggle={setAiActive}
+              />
+            </div>
+          )}
+
           {/* Messages area */}
           <div className="flex-1 overflow-y-auto">
             {/* Load older */}
