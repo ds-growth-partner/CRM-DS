@@ -183,7 +183,7 @@ export function Composer({
 
         // Send to n8n — n8n sends via WhatsApp API and writes to messages table
         if (waId) {
-          await fetch('/api/webhooks/n8n/send-message', {
+          const res = await fetch('/api/webhooks/n8n/send-message', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -199,8 +199,12 @@ export function Composer({
                 fields: contact.fields ?? {},
               } : null,
               conversation_id: conversationId,
+              // tenant_id de la conversación: permite al API enrutar al n8n
+              // correcto cuando un super admin está impersonando otra cuenta.
+              tenant_id: tenantId,
             }),
           })
+          if (!res.ok) throw new Error(`n8n send-message falló (${res.status})`)
         }
       }
 
@@ -224,7 +228,7 @@ export function Composer({
 
           // Send to n8n — n8n sends via WhatsApp API and writes to messages table
           if (waId) {
-            await fetch('/api/webhooks/n8n/send-message', {
+            const res = await fetch('/api/webhooks/n8n/send-message', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -242,8 +246,11 @@ export function Composer({
                   fields: contact.fields ?? {},
                 } : null,
                 conversation_id: conversationId,
+                // tenant_id de la conversación (ver nota en el envío de texto).
+                tenant_id: tenantId,
               }),
             })
+            if (!res.ok) throw new Error(`n8n send-message (archivo) falló (${res.status})`)
           }
         }
         setUploading(false)

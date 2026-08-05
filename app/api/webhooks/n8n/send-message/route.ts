@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthContext } from '@/lib/supabase/auth-context'
+import { getAuthContext, resolveTenantId } from '@/lib/supabase/auth-context'
 import { getN8nClientForTenant } from '@/lib/n8n/client'
 
 export async function POST(request: NextRequest) {
@@ -8,10 +8,13 @@ export async function POST(request: NextRequest) {
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await request.json()
-    const payload = { ...body, tenant_id: ctx.tenantId }
-    console.log('[Webhook] Sending message to tenant n8n:', { tenant_id: ctx.tenantId })
+    // Honra la impersonación de super admin: el cliente envía el tenant_id de la
+    // conversación; se usa solo si el usuario tiene permiso (super admin).
+    const tenantId = await resolveTenantId(ctx, body.tenant_id)
+    const payload = { ...body, tenant_id: tenantId }
+    console.log('[Webhook] Sending message to tenant n8n:', { tenant_id: tenantId })
 
-    const client = await getN8nClientForTenant(ctx.tenantId)
+    const client = await getN8nClientForTenant(tenantId)
     const res = await client.post('send-message', payload)
     const data = await res.json().catch(() => ({}))
 

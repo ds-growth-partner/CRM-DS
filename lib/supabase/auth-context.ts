@@ -31,3 +31,29 @@ export async function getAuthContext(): Promise<AuthContext | null> {
     role: data.role,
   }
 }
+
+// Resuelve el tenant sobre el que debe actuar una API route.
+//
+// Por defecto es el tenant propio del usuario (ctx.tenantId). Pero un super
+// admin puede estar "viendo como" otra cuenta (impersonación); esa selección
+// vive solo en el frontend, así que el cliente envía el tenant_id de la
+// conversación en el body y aquí lo honramos SOLO si el usuario es super admin.
+// Un usuario normal nunca puede actuar sobre un tenant que no es el suyo.
+export async function resolveTenantId(
+  ctx: AuthContext,
+  requestedTenantId?: string | null,
+): Promise<string> {
+  if (!requestedTenantId || requestedTenantId === ctx.tenantId) {
+    return ctx.tenantId
+  }
+
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('super_admins')
+    .select('id')
+    .eq('clerk_user_id', ctx.clerkUserId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  return data ? requestedTenantId : ctx.tenantId
+}
