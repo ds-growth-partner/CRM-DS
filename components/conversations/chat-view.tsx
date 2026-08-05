@@ -33,7 +33,8 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
   const { actions } = useRealtimeAIActions(contact.id)
   const { contact: liveContact } = useRealtimeContact(contact.id)
   const bottomRef = useRef<HTMLDivElement>(null)
-  const [aiActive, setAiActive] = useState(conversation.ai_active)
+  // Fuente de verdad del control IA = contacts.ai_active (no conversations).
+  const [aiActive, setAiActive] = useState(contact.ai_active)
   const [showAgentMenu, setShowAgentMenu] = useState(false)
   const [agents, setAgents] = useState<User[]>([])
   const [assignedAgent, setAssignedAgent] = useState(conversation.assigned_agent ?? null)
@@ -41,9 +42,10 @@ export function ChatView({ conversation, onBack, onShowContact }: ChatViewProps)
   const { tenant } = useAuth()
 
   useEffect(() => {
-    setAiActive(conversation.ai_active)
+    // liveContact refleja cambios en tiempo real (incluye ai_active).
+    setAiActive(liveContact?.ai_active ?? contact.ai_active)
     setAssignedAgent(conversation.assigned_agent ?? null)
-  }, [conversation.id, conversation.ai_active, conversation.assigned_agent])
+  }, [conversation.id, contact.ai_active, liveContact?.ai_active, conversation.assigned_agent])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })

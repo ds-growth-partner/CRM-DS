@@ -161,13 +161,15 @@ export function ContactDetailView({ contactId }: ContactDetailViewProps) {
       .order('last_message_at', { ascending: false })
       .limit(1)
       .maybeSingle()
-      .then(({ data }) => {
-        setConversation(data)
-        // En el mismo batch que setConversation, para que el TakeControlButton
-        // (que fija su estado interno al montar) arranque con el valor correcto.
-        if (data) setAiActive(data.ai_active)
-      })
+      .then(({ data }) => setConversation(data))
   }, [supabase, contactId])
+
+  // Fuente de verdad del control IA = contacts.ai_active (realtime). El botón se
+  // resincroniza solo con esta prop, así que el badge y la etiqueta siempre
+  // reflejan la BD aunque el contacto se cargue después.
+  useEffect(() => {
+    if (contact) setAiActive(contact.ai_active)
+  }, [contact?.ai_active]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load appointments
   useEffect(() => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Bot, User, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -22,6 +22,13 @@ export function TakeControlButton({
   const { supabase } = useSupabase()
   const [loading, setLoading] = useState(false)
   const [localAiActive, setLocalAiActive] = useState(aiActive)
+
+  // Mantener el estado del botón en sync con la fuente de verdad (la prop, que
+  // viene de la BD y se actualiza en tiempo real). Sin esto, el botón se queda
+  // con el valor inicial y su etiqueta puede contradecir a la base de datos.
+  useEffect(() => {
+    setLocalAiActive(aiActive)
+  }, [aiActive])
 
   async function handleToggle() {
     setLoading(true)
